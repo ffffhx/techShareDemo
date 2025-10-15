@@ -89,6 +89,7 @@ const EditableCell = ({
 }: EditableCellProps) => {
   const [localValue, setLocalValue] = useState<string>(initialValue);
   const [isVisible, setIsVisible] = useState(false); // 可视化懒加载状态
+  const [isLoading, setIsLoading] = useState(false); // 加载状态
   const cellRef = useRef<HTMLTableCellElement>(null);
   
   // 判断是否为联动字段
@@ -101,33 +102,39 @@ const EditableCell = ({
     }
   }, [nodeId, field]);
 
-  // 可视化懒加载：使用 Intersection Observer 检测可见性
-  React.useEffect(() => {
-    if (!editing) return;
+   // 可视化懒加载：使用 Intersection Observer 检测可见性
+   React.useEffect(() => {
+     if (!editing) return;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setIsVisible(true);
-            setLocalValue(initialValue);
-          }
-        });
-      },
-      {
-        rootMargin: '50px', // 提前50px开始渲染
-        threshold: 0.1
-      }
-    );
+     setIsLoading(true);
 
-    if (cellRef.current) {
-      observer.observe(cellRef.current);
-    }
+     const observer = new IntersectionObserver(
+       (entries) => {
+         entries.forEach((entry) => {
+           if (entry.isIntersecting) {
+             // 模拟加载延迟，让用户看到加载效果
+             setTimeout(() => {
+               setIsVisible(true);
+               setLocalValue(initialValue);
+               setIsLoading(false);
+             }, Math.random() * 500 + 100); // 100-600ms的随机延迟
+           }
+         });
+       },
+       {
+         rootMargin: '50px', // 提前50px开始渲染
+         threshold: 0.1
+       }
+     );
 
-    return () => {
-      observer.disconnect();
-    };
-  }, [editing, initialValue]);
+     if (cellRef.current) {
+       observer.observe(cellRef.current);
+     }
+
+     return () => {
+       observer.disconnect();
+     };
+   }, [editing, initialValue]);
 
   // 注册事件监听器 - 只给联动字段注册
   React.useEffect(() => {
@@ -140,12 +147,13 @@ const EditableCell = ({
     }
   }, [isVisible, isLinkedField, handleLinkedFieldChange]);
 
-  // 重置可视化状态
-  React.useEffect(() => {
-    if (!editing) {
-      setIsVisible(false);
-    }
-  }, [editing]);
+   // 重置可视化状态
+   React.useEffect(() => {
+     if (!editing) {
+       setIsVisible(false);
+       setIsLoading(false);
+     }
+   }, [editing]);
 
   const getInputNode = () => {
     if (inputType === 'select') {
@@ -192,6 +200,65 @@ const EditableCell = ({
     );
   };
 
+  // 渲染假的输入框占位符 - 模拟真实的 Ant Design 组件样式
+  const getFakeInput = () => {
+    if (inputType === 'select') {
+      return (
+        <div style={{
+          height: '32px',
+          border: '1px solid #d9d9d9',
+          borderRadius: '6px',
+          backgroundColor: '#ffffff',
+          display: 'flex',
+          alignItems: 'center',
+          padding: '4px 11px',
+          cursor: 'not-allowed',
+          opacity: 0.7,
+          transition: 'all 0.3s ease'
+        }}>
+          <span style={{ 
+            color: initialValue ? '#000000d9' : '#bfbfbf', 
+            fontSize: '14px',
+            transition: 'color 0.3s ease'
+          }}>
+            {initialValue || `请选择${title}`}
+          </span>
+          <div style={{
+            marginLeft: 'auto',
+            width: '0',
+            height: '0',
+            borderLeft: '4px solid transparent',
+            borderRight: '4px solid transparent',
+            borderTop: '4px solid #bfbfbf',
+            transition: 'border-color 0.3s ease'
+          }} />
+        </div>
+      );
+    }
+    return (
+      <div style={{
+        height: '32px',
+        border: '1px solid #d9d9d9',
+        borderRadius: '6px',
+        backgroundColor: '#ffffff',
+        display: 'flex',
+        alignItems: 'center',
+        padding: '4px 11px',
+        cursor: 'not-allowed',
+        opacity: 0.7,
+        transition: 'all 0.3s ease'
+      }}>
+        <span style={{ 
+          color: initialValue ? '#000000d9' : '#bfbfbf', 
+          fontSize: '14px',
+          transition: 'color 0.3s ease'
+        }}>
+          {initialValue || `请输入${title}`}
+        </span>
+      </div>
+    );
+  };
+
   return (
     <td 
       ref={cellRef}
@@ -203,13 +270,10 @@ const EditableCell = ({
             getInputNode()
           ) : (
             <div style={{ 
-              height: '32px', 
-              display: 'flex', 
-              alignItems: 'center',
-              color: '#999',
-              fontSize: '12px'
+              opacity: isLoading ? 1 : 0.5,
+              transition: 'opacity 0.3s ease'
             }}>
-              加载中...
+              {getFakeInput()}
             </div>
           )}
         </div>
