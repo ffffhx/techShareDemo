@@ -67,11 +67,13 @@ interface EditableCellProps {
   inputType?: 'input' | 'select';
   options?: Array<{ label: string; value: string }>;
   initialValue?: string;
+  updateDraftField?: (nodeId: string, field: string, value: string) => void;
+  linkedFields?: string[];
   [key: string]: unknown;
 }
 
 
-// 优化的编辑单元格组件 - 分批渲染避免卡顿
+// 可视化懒加载的编辑单元格组件 - 只渲染可见区域的组件
 const EditableCell = ({ 
   editing, 
   nodeId,
@@ -81,47 +83,69 @@ const EditableCell = ({
   inputType = 'input',
   options = [],
   initialValue = '',
+  updateDraftField,
+  linkedFields,
   ...restProps 
 }: EditableCellProps) => {
-  const [isRendered, setIsRendered] = useState(false);
   const [localValue, setLocalValue] = useState<string>(initialValue);
+  const [isVisible, setIsVisible] = useState(false); // 可视化懒加载状态
+  const cellRef = useRef<HTMLTableCellElement>(null);
   
-  // 监听字段变化事件
-  const handleFieldChange = useCallback((event: FieldChangeEvent) => {
+  // 判断是否为联动字段
+  const isLinkedField = linkedFields?.includes(field) || false;
+  
+  // 监听联动字段变化事件
+  const handleLinkedFieldChange = useCallback((event: FieldChangeEvent) => {
     if (event.nodeId === nodeId && event.field === field) {
       setLocalValue(event.value);
     }
   }, [nodeId, field]);
 
-  // 分批渲染：根据行索引和列索引计算延迟时间
+  // 可视化懒加载：使用 Intersection Observer 检测可见性
   React.useEffect(() => {
-    if (editing && !isRendered) {
-      const rowIndex = parseInt(nodeId.split('-')[0]) || 0;
-      const colIndex = ['name', 'value1', 'value2', 'value3', 'value4', 'value5', 'value6', 'value7', 'value8', 'value9', 'value10'].indexOf(field);
-      
-      // 计算延迟时间：前面的行和列优先渲染
-      const delay = (rowIndex * 10 + colIndex) * 2; // 每批次间隔2ms，更快
-      
-      const timer = setTimeout(() => {
-        setIsRendered(true);
-        setLocalValue(initialValue);
-      }, delay);
-      
-      return () => clearTimeout(timer);
-    } else if (!editing) {
-      setIsRendered(false);
-    }
-  }, [editing, nodeId, field, initialValue, isRendered]);
+    if (!editing) return;
 
-  // 注册事件监听器
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setIsVisible(true);
+            setLocalValue(initialValue);
+          }
+        });
+      },
+      {
+        rootMargin: '50px', // 提前50px开始渲染
+        threshold: 0.1
+      }
+    );
+
+    if (cellRef.current) {
+      observer.observe(cellRef.current);
+    }
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [editing, initialValue]);
+
+  // 注册事件监听器 - 只给联动字段注册
   React.useEffect(() => {
-    if (isRendered) {
-      eventEmitter.on('fieldChange', handleFieldChange);
+    if (isVisible && isLinkedField) {
+      // 只有联动字段才需要监听事件
+      eventEmitter.on('fieldChange', handleLinkedFieldChange);
       return () => {
-        eventEmitter.off('fieldChange', handleFieldChange);
+        eventEmitter.off('fieldChange', handleLinkedFieldChange);
       };
     }
-  }, [isRendered, handleFieldChange]);
+  }, [isVisible, isLinkedField, handleLinkedFieldChange]);
+
+  // 重置可视化状态
+  React.useEffect(() => {
+    if (!editing) {
+      setIsVisible(false);
+    }
+  }, [editing]);
 
   const getInputNode = () => {
     if (inputType === 'select') {
@@ -132,9 +156,16 @@ const EditableCell = ({
           placeholder={`请选择${title}`}
           onChange={(value) => {
             setLocalValue(value);
-            eventEmitter.emit('fieldChange', {
-              nodeId, field, value
-            });
+            
+            if (isLinkedField) {
+              // 联动字段：触发事件
+              eventEmitter.emit('fieldChange', {
+                nodeId, field, value
+              });
+            } else {
+              // 普通字段：直接写入草稿本
+              updateDraftField?.(nodeId, field, value);
+            }
           }}
         />
       );
@@ -146,19 +177,29 @@ const EditableCell = ({
         onChange={(e) => {
           const value = e.target.value;
           setLocalValue(value);
-          eventEmitter.emit('fieldChange', {
-            nodeId, field, value
-          });
+          
+          if (isLinkedField) {
+            // 联动字段：触发事件
+            eventEmitter.emit('fieldChange', {
+              nodeId, field, value
+            });
+          } else {
+            // 普通字段：直接写入草稿本
+            updateDraftField?.(nodeId, field, value);
+          }
         }}
       />
     );
   };
 
   return (
-    <td {...restProps}>
+    <td 
+      ref={cellRef}
+      {...restProps}
+    >
       {editing ? (
         <div style={{ margin: 0 }}>
-          {isRendered ? (
+          {isVisible ? (
             getInputNode()
           ) : (
             <div style={{ 
@@ -187,8 +228,11 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
   const [treeData, setTreeData] = useState<TreeNode[]>(data);
   const [isEditing, setIsEditing] = useState(false);
   
-  // 使用 ref 存储所有表单数据，避免 re-render
+  // 草稿本：存储所有字段的编辑数据
   const formDataRef = useRef<{ [nodeId: string]: Partial<TreeNode> }>({});
+  
+  // 联动字段列表：只有这些字段需要监听事件
+  const linkedFields = ['value1', 'value2'];
 
   // Mock 选择框选项
   const selectOptions = {
@@ -271,11 +315,11 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
     formDataRef.current = formData;
   }, [treeData]);
 
-  // 字段变化事件处理
-  const handleFieldChange = useCallback((event: FieldChangeEvent) => {
+  // 联动字段变化事件处理 - 只处理需要联动的字段
+  const handleLinkedFieldChange = useCallback((event: FieldChangeEvent) => {
     const { nodeId, field, value } = event;
     
-    // 更新 ref 中的数据
+    // 更新草稿本中的数据
     if (!formDataRef.current[nodeId]) {
       formDataRef.current[nodeId] = {};
     }
@@ -285,10 +329,10 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
     if (field === 'value1') {
       const linkedValue2 = getLinkedValue2(value);
       
-      // 更新 ref 中的值2
+      // 更新草稿本中的值2
       formDataRef.current[nodeId].value2 = linkedValue2;
       
-      // 通过事件通知值2的单元格更新
+      // 通过事件通知值2的单元格更新显示
       setTimeout(() => {
         eventEmitter.emit('fieldChange', {
           nodeId,
@@ -299,13 +343,21 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
     }
   }, []);
 
-  // 注册字段变化事件监听器
+  // 普通字段变化处理 - 直接写入草稿本，不触发事件
+  const updateDraftField = useCallback((nodeId: string, field: string, value: string) => {
+    if (!formDataRef.current[nodeId]) {
+      formDataRef.current[nodeId] = {};
+    }
+    (formDataRef.current[nodeId] as Record<string, string>)[field] = value;
+  }, []);
+
+  // 注册联动字段事件监听器 - 只监听需要联动的字段
   React.useEffect(() => {
-    eventEmitter.on('fieldChange', handleFieldChange);
+    eventEmitter.on('fieldChange', handleLinkedFieldChange);
     return () => {
-      eventEmitter.off('fieldChange', handleFieldChange);
+      eventEmitter.off('fieldChange', handleLinkedFieldChange);
     };
-  }, [handleFieldChange]);
+  }, [handleLinkedFieldChange]);
 
   const handleEdit = () => {
     // 初始化表单数据
@@ -363,6 +415,8 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
         title: '名称',
         editing: isEditing,
         initialValue: record.name,
+        updateDraftField,
+        linkedFields,
       }),
     },
     {
@@ -379,6 +433,8 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
         options: selectOptions.value1,
         editing: isEditing,
         initialValue: record.value1,
+        updateDraftField,
+        linkedFields,
       }),
     },
     {
@@ -395,6 +451,8 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
         options: selectOptions.value2,
         editing: isEditing,
         initialValue: record.value2,
+        updateDraftField,
+        linkedFields,
       }),
     },
     {
@@ -411,6 +469,8 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
         options: selectOptions.value3,
         editing: isEditing,
         initialValue: record.value3,
+        updateDraftField,
+        linkedFields,
       }),
     },
     {
@@ -427,6 +487,8 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
         options: selectOptions.value4,
         editing: isEditing,
         initialValue: record.value4,
+        updateDraftField,
+        linkedFields,
       }),
     },
     {
@@ -443,6 +505,8 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
         options: selectOptions.value5,
         editing: isEditing,
         initialValue: record.value5,
+        updateDraftField,
+        linkedFields,
       }),
     },
     {
@@ -458,6 +522,8 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
         title: '值6',
         editing: isEditing,
         initialValue: record.value6,
+        updateDraftField,
+        linkedFields,
       }),
     },
     {
@@ -473,6 +539,8 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
         title: '值7',
         editing: isEditing,
         initialValue: record.value7,
+        updateDraftField,
+        linkedFields,
       }),
     },
     {
@@ -488,6 +556,8 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
         title: '值8',
         editing: isEditing,
         initialValue: record.value8,
+        updateDraftField,
+        linkedFields,
       }),
     },
     {
@@ -503,6 +573,8 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
         title: '值9',
         editing: isEditing,
         initialValue: record.value9,
+        updateDraftField,
+        linkedFields,
       }),
     },
     {
@@ -518,6 +590,8 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
         title: '值10',
         editing: isEditing,
         initialValue: record.value10,
+        updateDraftField,
+        linkedFields,
       }),
     },
   ];
