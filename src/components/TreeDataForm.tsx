@@ -1,4 +1,4 @@
-import { useState, createContext, useContext, useCallback, useRef } from 'react';
+import React, { useState, createContext, useContext, useCallback, useRef } from 'react';
 import { Input, Button, Space, Typography, message, Table, Select } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { EditOutlined, SaveOutlined, CloseOutlined } from '@ant-design/icons';
@@ -43,7 +43,7 @@ interface EditableCellProps {
   [key: string]: unknown;
 }
 
-// 自定义表格单元格编辑组件
+// 懒加载的表格单元格编辑组件
 const EditableCell = ({ 
   editing, 
   nodeId,
@@ -56,6 +56,8 @@ const EditableCell = ({
   ...restProps 
 }: EditableCellProps) => {
   const context = useContext(FormContext);
+  const [isVisible, setIsVisible] = useState(false);
+  const cellRef = useRef<HTMLTableCellElement>(null);
   
   if (!context) {
     throw new Error('EditableCell must be used within FormProvider');
@@ -63,6 +65,39 @@ const EditableCell = ({
 
   const { updateValue, getValue } = context;
   const currentValue = getValue(nodeId, field);
+
+  // 懒加载：使用 Intersection Observer 检测可见性
+  React.useEffect(() => {
+    if (!editing) {
+      setIsVisible(false);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            // 模拟加载延迟，让用户看到加载效果
+            setTimeout(() => {
+              setIsVisible(true);
+            }, Math.random() * 500 + 100); // 100-600ms的随机延迟
+          }
+        });
+      },
+      {
+        rootMargin: '50px', // 提前50px开始渲染
+        threshold: 0.1
+      }
+    );
+
+    if (cellRef.current) {
+      observer.observe(cellRef.current);
+    }
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [editing]);
 
   const getInputNode = () => {
     if (inputType === 'select') {
@@ -90,11 +125,25 @@ const EditableCell = ({
     );
   };
 
+
   return (
-    <td {...restProps}>
+    <td ref={cellRef} {...restProps}>
       {editing ? (
         <div style={{ margin: 0 }}>
-          {getInputNode()}
+          {isVisible ? (
+            getInputNode()
+          ) : (
+            <div style={{ 
+              height: '32px', 
+              display: 'flex', 
+              alignItems: 'center',
+              color: '#999',
+              fontSize: '12px',
+              justifyContent: 'center'
+            }}>
+              加载中...
+            </div>
+          )}
         </div>
       ) : (
         children
