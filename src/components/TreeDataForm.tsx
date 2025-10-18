@@ -21,67 +21,6 @@ interface TreeNode {
   children?: TreeNode[];
 }
 
-interface EditableCellProps {
-  editing: boolean;
-  dataIndex: string[];
-  title: string;
-  children: React.ReactNode;
-  inputType?: 'input' | 'select';
-  options?: Array<{ label: string; value: string }>;
-  onValueChange?: (nodeId: string, value: string) => void;
-  [key: string]: unknown;
-}
-
-// 自定义表格单元格编辑组件
-const EditableCell = ({ 
-  editing, 
-  dataIndex, 
-  title, 
-  children,
-  inputType = 'input',
-  options = [],
-  onValueChange,
-  ...restProps 
-}: EditableCellProps) => {
-  const getInputNode = () => {
-    if (inputType === 'select') {
-      return (
-        <Select 
-          options={options} 
-          placeholder={`请选择${title}`}
-          onChange={(value) => {
-            // 如果是值1字段，触发联动逻辑
-            if (onValueChange && dataIndex[1] === 'value1') {
-              onValueChange(dataIndex[0], value);
-            }
-          }}
-        />
-      );
-    }
-    return <Input placeholder={`请输入${title}`} />;
-  };
-
-  return (
-    <td {...restProps}>
-      {editing ? (
-        <Form.Item
-          name={dataIndex}
-          style={{ margin: 0 }}
-          rules={[
-            {
-              required: true,
-              message: inputType === 'select' ? `请选择${title}!` : `请输入${title}!`,
-            },
-          ]}
-        >
-          {getInputNode()}
-        </Form.Item>
-      ) : (
-        children
-      )}
-    </td>
-  );
-};
 
 interface TreeDataFormProps {
   data: TreeNode[];
@@ -230,157 +169,294 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
       key: 'name',
       width: 150,
       fixed: 'left',
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'text',
-        dataIndex: [record.id, 'name'],
-        title: '名称',
-        editing: isEditing,
-      }),
+      render: (text: string, record: TreeNode) => {
+        if (isEditing) {
+          return (
+            <Form.Item
+              name={[record.id, 'name']}
+              style={{ margin: 0 }}
+              rules={[
+                {
+                  required: true,
+                  message: '请输入名称!',
+                },
+              ]}
+            >
+              <Input placeholder="请输入名称" />
+            </Form.Item>
+          );
+        }
+        return text;
+      },
     },
     {
       title: '值1',
       dataIndex: 'value1',
       key: 'value1',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'select',
-        dataIndex: [record.id, 'value1'],
-        title: '值1',
-        options: selectOptions.value1,
-        onValueChange: handleValue1Change,
-        editing: isEditing,
-      }),
+      render: (text: string, record: TreeNode) => {
+        if (isEditing) {
+          return (
+            <Form.Item
+              name={[record.id, 'value1']}
+              style={{ margin: 0 }}
+              rules={[
+                {
+                  required: true,
+                  message: '请选择值1!',
+                },
+              ]}
+            >
+              <Select 
+                options={selectOptions.value1}
+                placeholder="请选择值1"
+                onChange={(value) => handleValue1Change(record.id, value)}
+              />
+            </Form.Item>
+          );
+        }
+        return text;
+      },
     },
     {
       title: '值2',
       dataIndex: 'value2',
       key: 'value2',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'select',
-        dataIndex: [record.id, 'value2'],
-        title: '值2',
-        options: selectOptions.value2,
-        editing: isEditing,
-      }),
+      render: (text: string, record: TreeNode) => {
+        if (isEditing) {
+          return (
+            <Form.Item
+              name={[record.id, 'value2']}
+              style={{ margin: 0 }}
+              rules={[
+                {
+                  required: true,
+                  message: '请选择值2!',
+                },
+              ]}
+            >
+              <Select 
+                options={selectOptions.value2}
+                placeholder="请选择值2"
+              />
+            </Form.Item>
+          );
+        }
+        return text;
+      },
     },
     {
       title: '值3',
       dataIndex: 'value3',
       key: 'value3',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'select',
-        dataIndex: [record.id, 'value3'],
-        title: '值3',
-        options: selectOptions.value3,
-        editing: isEditing,
-      }),
+      render: (text: string, record: TreeNode) => {
+        if (isEditing) {
+          return (
+            <Form.Item
+              name={[record.id, 'value3']}
+              style={{ margin: 0 }}
+              rules={[
+                {
+                  required: true,
+                  message: '请选择值3!',
+                },
+              ]}
+            >
+              <Select 
+                options={selectOptions.value3}
+                placeholder="请选择值3"
+              />
+            </Form.Item>
+          );
+        }
+        return text;
+      },
     },
     {
       title: '值4',
       dataIndex: 'value4',
       key: 'value4',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'select',
-        dataIndex: [record.id, 'value4'],
-        title: '值4',
-        options: selectOptions.value4,
-        editing: isEditing,
-      }),
+      render: (text: string, record: TreeNode) => {
+        if (isEditing) {
+          return (
+            <Form.Item
+              name={[record.id, 'value4']}
+              style={{ margin: 0 }}
+              rules={[
+                {
+                  required: true,
+                  message: '请选择值4!',
+                },
+              ]}
+            >
+              <Select 
+                options={selectOptions.value4}
+                placeholder="请选择值4"
+              />
+            </Form.Item>
+          );
+        }
+        return text;
+      },
     },
     {
       title: '值5',
       dataIndex: 'value5',
       key: 'value5',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'select',
-        dataIndex: [record.id, 'value5'],
-        title: '值5',
-        options: selectOptions.value5,
-        editing: isEditing,
-      }),
+      render: (text: string, record: TreeNode) => {
+        if (isEditing) {
+          return (
+            <Form.Item
+              name={[record.id, 'value5']}
+              style={{ margin: 0 }}
+              rules={[
+                {
+                  required: true,
+                  message: '请选择值5!',
+                },
+              ]}
+            >
+              <Select 
+                options={selectOptions.value5}
+                placeholder="请选择值5"
+              />
+            </Form.Item>
+          );
+        }
+        return text;
+      },
     },
     {
       title: '值6',
       dataIndex: 'value6',
       key: 'value6',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'text',
-        dataIndex: [record.id, 'value6'],
-        title: '值6',
-        editing: isEditing,
-      }),
+      render: (text: string, record: TreeNode) => {
+        if (isEditing) {
+          return (
+            <Form.Item
+              name={[record.id, 'value6']}
+              style={{ margin: 0 }}
+              rules={[
+                {
+                  required: true,
+                  message: '请输入值6!',
+                },
+              ]}
+            >
+              <Input placeholder="请输入值6" />
+            </Form.Item>
+          );
+        }
+        return text;
+      },
     },
     {
       title: '值7',
       dataIndex: 'value7',
       key: 'value7',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'text',
-        dataIndex: [record.id, 'value7'],
-        title: '值7',
-        editing: isEditing,
-      }),
+      render: (text: string, record: TreeNode) => {
+        if (isEditing) {
+          return (
+            <Form.Item
+              name={[record.id, 'value7']}
+              style={{ margin: 0 }}
+              rules={[
+                {
+                  required: true,
+                  message: '请输入值7!',
+                },
+              ]}
+            >
+              <Input placeholder="请输入值7" />
+            </Form.Item>
+          );
+        }
+        return text;
+      },
     },
     {
       title: '值8',
       dataIndex: 'value8',
       key: 'value8',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'text',
-        dataIndex: [record.id, 'value8'],
-        title: '值8',
-        editing: isEditing,
-      }),
+      render: (text: string, record: TreeNode) => {
+        if (isEditing) {
+          return (
+            <Form.Item
+              name={[record.id, 'value8']}
+              style={{ margin: 0 }}
+              rules={[
+                {
+                  required: true,
+                  message: '请输入值8!',
+                },
+              ]}
+            >
+              <Input placeholder="请输入值8" />
+            </Form.Item>
+          );
+        }
+        return text;
+      },
     },
     {
       title: '值9',
       dataIndex: 'value9',
       key: 'value9',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'text',
-        dataIndex: [record.id, 'value9'],
-        title: '值9',
-        editing: isEditing,
-      }),
+      render: (text: string, record: TreeNode) => {
+        if (isEditing) {
+          return (
+            <Form.Item
+              name={[record.id, 'value9']}
+              style={{ margin: 0 }}
+              rules={[
+                {
+                  required: true,
+                  message: '请输入值9!',
+                },
+              ]}
+            >
+              <Input placeholder="请输入值9" />
+            </Form.Item>
+          );
+        }
+        return text;
+      },
     },
     {
       title: '值10',
       dataIndex: 'value10',
       key: 'value10',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'text',
-        dataIndex: [record.id, 'value10'],
-        title: '值10',
-        editing: isEditing,
-      }),
+      render: (text: string, record: TreeNode) => {
+        if (isEditing) {
+          return (
+            <Form.Item
+              name={[record.id, 'value10']}
+              style={{ margin: 0 }}
+              rules={[
+                {
+                  required: true,
+                  message: '请输入值10!',
+                },
+              ]}
+            >
+              <Input placeholder="请输入值10" />
+            </Form.Item>
+          );
+        }
+        return text;
+      },
     },
   ];
 
-  const components = {
-    body: {
-      cell: EditableCell,
-    },
-  };
 
   return (
     <div style={{ padding: 24 ,width: '100%'}}>
@@ -414,7 +490,6 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
 
       <Form form={form} component={false}>
         <Table
-          components={components}
           columns={columns}
           dataSource={treeData}
           rowKey="id"
