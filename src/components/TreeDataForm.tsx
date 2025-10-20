@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Input, Button, Space, Typography, message, Table, Select } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { EditOutlined, SaveOutlined, CloseOutlined } from '@ant-design/icons';
@@ -97,13 +97,14 @@ const EditableCell = ({
   
   // 监听联动字段变化事件
   const handleLinkedFieldChange = useCallback((event: FieldChangeEvent) => {
+    console.log('handleLinkedFieldChange', event.value);
     if (event.nodeId === nodeId && event.field === field) {
       setLocalValue(event.value);
     }
   }, [nodeId, field]);
 
    // 可视化懒加载：使用 Intersection Observer 检测可见性
-   React.useEffect(() => {
+   useEffect(() => {
      if (!editing) return;
 
      setIsLoading(true);
@@ -137,18 +138,18 @@ const EditableCell = ({
    }, [editing, initialValue]);
 
   // 注册事件监听器 - 只给联动字段注册
-  React.useEffect(() => {
+  useEffect(() => {
     if (isVisible && isLinkedField) {
       // 只有联动字段才需要监听事件
-      eventEmitter.on('fieldChange', handleLinkedFieldChange);
+      eventEmitter.on('linkChange', handleLinkedFieldChange);
       return () => {
-        eventEmitter.off('fieldChange', handleLinkedFieldChange);
+        eventEmitter.off('linkChange', handleLinkedFieldChange);
       };
     }
   }, [isVisible, isLinkedField, handleLinkedFieldChange]);
 
    // 重置可视化状态
-   React.useEffect(() => {
+   useEffect(() => {
      if (!editing) {
        setIsVisible(false);
        setIsLoading(false);
@@ -167,7 +168,7 @@ const EditableCell = ({
             
             if (isLinkedField) {
               // 联动字段：触发事件
-              eventEmitter.emit('fieldChange', {
+              eventEmitter.emit('linkChange', {
                 nodeId, field, value
               });
             } else {
@@ -188,7 +189,7 @@ const EditableCell = ({
           
           if (isLinkedField) {
             // 联动字段：触发事件
-            eventEmitter.emit('fieldChange', {
+            eventEmitter.emit('linkChange', {
               nodeId, field, value
             });
           } else {
@@ -398,7 +399,7 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
       
       // 通过事件通知值2的单元格更新显示
       setTimeout(() => {
-        eventEmitter.emit('fieldChange', {
+        eventEmitter.emit('linkChange', {
           nodeId,
           field: 'value2',
           value: linkedValue2
@@ -417,9 +418,9 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
 
   // 注册联动字段事件监听器 - 只监听需要联动的字段
   React.useEffect(() => {
-    eventEmitter.on('fieldChange', handleLinkedFieldChange);
+    eventEmitter.on('linkChange', handleLinkedFieldChange);
     return () => {
-      eventEmitter.off('fieldChange', handleLinkedFieldChange);
+      eventEmitter.off('linkChange', handleLinkedFieldChange);
     };
   }, [handleLinkedFieldChange]);
 
