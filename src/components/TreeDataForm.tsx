@@ -58,39 +58,34 @@ class EventEmitter {
 // 全局事件发射器
 const eventEmitter = new EventEmitter();
 
-interface EditableCellProps {
+// 可编辑字段渲染组件 - 用于 render 函数
+interface RenderEditableFieldProps {
   editing: boolean;
   nodeId: string;
   field: string;
   title: string;
-  children: React.ReactNode;
+  value: string;
   inputType?: 'input' | 'select';
   options?: Array<{ label: string; value: string }>;
-  initialValue?: string;
   updateDraftField?: (nodeId: string, field: string, value: string) => void;
   linkedFields?: string[];
-  [key: string]: unknown;
 }
 
-
-// 可视化懒加载的编辑单元格组件 - 只渲染可见区域的组件
-const EditableCell = ({ 
+const RenderEditableField = ({ 
   editing, 
   nodeId,
   field,
   title, 
-  children,
+  value,
   inputType = 'input',
   options = [],
-  initialValue = '',
   updateDraftField,
   linkedFields,
-  ...restProps 
-}: EditableCellProps) => {
-  const [localValue, setLocalValue] = useState<string>(initialValue);
+}: RenderEditableFieldProps) => {
+  const [localValue, setLocalValue] = useState<string>(value);
   const [isVisible, setIsVisible] = useState(false); // 可视化懒加载状态
   const [isLoading, setIsLoading] = useState(false); // 加载状态
-  const cellRef = useRef<HTMLTableCellElement>(null);
+  const cellRef = useRef<HTMLDivElement>(null);
   
   // 判断是否为联动字段
   const isLinkedField = linkedFields?.includes(field) || false;
@@ -116,7 +111,7 @@ const EditableCell = ({
              // 模拟加载延迟，让用户看到加载效果
              setTimeout(() => {
                setIsVisible(true);
-               setLocalValue(initialValue);
+               setLocalValue(value);
                setIsLoading(false);
              }, Math.random() * 500 + 100); // 100-600ms的随机延迟
            }
@@ -135,7 +130,7 @@ const EditableCell = ({
      return () => {
        observer.disconnect();
      };
-   }, [editing, initialValue]);
+   }, [editing, value]);
 
   // 注册事件监听器 - 只给联动字段注册
   useEffect(() => {
@@ -218,11 +213,11 @@ const EditableCell = ({
           transition: 'all 0.3s ease'
         }}>
           <span style={{ 
-            color: initialValue ? '#000000d9' : '#bfbfbf', 
+            color: value ? '#000000d9' : '#bfbfbf', 
             fontSize: '14px',
             transition: 'color 0.3s ease'
           }}>
-            {initialValue || `请选择${title}`}
+            {value || `请选择${title}`}
           </span>
           <div style={{
             marginLeft: 'auto',
@@ -250,38 +245,33 @@ const EditableCell = ({
         transition: 'all 0.3s ease'
       }}>
         <span style={{ 
-          color: initialValue ? '#000000d9' : '#bfbfbf', 
+          color: value ? '#000000d9' : '#bfbfbf', 
           fontSize: '14px',
           transition: 'color 0.3s ease'
         }}>
-          {initialValue || `请输入${title}`}
+          {value || `请输入${title}`}
         </span>
       </div>
     );
   };
 
+  if (!editing) {
+    return <span>{value}</span>;
+  }
+
   return (
-    <td 
-      ref={cellRef}
-      {...restProps}
-    >
-      {editing ? (
-        <div style={{ margin: 0 }}>
-          {isVisible ? (
-            getInputNode()
-          ) : (
-            <div style={{ 
-              opacity: isLoading ? 1 : 0.5,
-              transition: 'opacity 0.3s ease'
-            }}>
-              {getFakeInput()}
-            </div>
-          )}
-        </div>
+    <div ref={cellRef} style={{ margin: 0 }}>
+      {isVisible ? (
+        getInputNode()
       ) : (
-        children
+        <div style={{ 
+          opacity: isLoading ? 1 : 0.5,
+          transition: 'opacity 0.3s ease'
+        }}>
+          {getFakeInput()}
+        </div>
       )}
-    </td>
+    </div>
   );
 };
 
@@ -472,200 +462,205 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
       key: 'name',
       width: 150,
       fixed: 'left',
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'input',
-        nodeId: record.id,
-        field: 'name',
-        title: '名称',
-        editing: isEditing,
-        initialValue: record.name,
-        updateDraftField,
-        linkedFields,
-      }),
+      render: (_text: string, record: TreeNode) => (
+        <RenderEditableField
+          editing={isEditing}
+          nodeId={record.id}
+          field="name"
+          title="名称"
+          value={record.name}
+          inputType="input"
+          updateDraftField={updateDraftField}
+          linkedFields={linkedFields}
+        />
+      ),
     },
     {
       title: '值1',
       dataIndex: 'value1',
       key: 'value1',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'select',
-        nodeId: record.id,
-        field: 'value1',
-        title: '值1',
-        options: selectOptions.value1,
-        editing: isEditing,
-        initialValue: record.value1,
-        updateDraftField,
-        linkedFields,
-      }),
+      render: (_text: string, record: TreeNode) => (
+        <RenderEditableField
+          editing={isEditing}
+          nodeId={record.id}
+          field="value1"
+          title="值1"
+          value={record.value1}
+          inputType="select"
+          options={selectOptions.value1}
+          updateDraftField={updateDraftField}
+          linkedFields={linkedFields}
+        />
+      ),
     },
     {
       title: '值2',
       dataIndex: 'value2',
       key: 'value2',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'select',
-        nodeId: record.id,
-        field: 'value2',
-        title: '值2',
-        options: selectOptions.value2,
-        editing: isEditing,
-        initialValue: record.value2,
-        updateDraftField,
-        linkedFields,
-      }),
+      render: (_text: string, record: TreeNode) => (
+        <RenderEditableField
+          editing={isEditing}
+          nodeId={record.id}
+          field="value2"
+          title="值2"
+          value={record.value2}
+          inputType="select"
+          options={selectOptions.value2}
+          updateDraftField={updateDraftField}
+          linkedFields={linkedFields}
+        />
+      ),
     },
     {
       title: '值3',
       dataIndex: 'value3',
       key: 'value3',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'select',
-        nodeId: record.id,
-        field: 'value3',
-        title: '值3',
-        options: selectOptions.value3,
-        editing: isEditing,
-        initialValue: record.value3,
-        updateDraftField,
-        linkedFields,
-      }),
+      render: (_text: string, record: TreeNode) => (
+        <RenderEditableField
+          editing={isEditing}
+          nodeId={record.id}
+          field="value3"
+          title="值3"
+          value={record.value3}
+          inputType="select"
+          options={selectOptions.value3}
+          updateDraftField={updateDraftField}
+          linkedFields={linkedFields}
+        />
+      ),
     },
     {
       title: '值4',
       dataIndex: 'value4',
       key: 'value4',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'select',
-        nodeId: record.id,
-        field: 'value4',
-        title: '值4',
-        options: selectOptions.value4,
-        editing: isEditing,
-        initialValue: record.value4,
-        updateDraftField,
-        linkedFields,
-      }),
+      render: (_text: string, record: TreeNode) => (
+        <RenderEditableField
+          editing={isEditing}
+          nodeId={record.id}
+          field="value4"
+          title="值4"
+          value={record.value4}
+          inputType="select"
+          options={selectOptions.value4}
+          updateDraftField={updateDraftField}
+          linkedFields={linkedFields}
+        />
+      ),
     },
     {
       title: '值5',
       dataIndex: 'value5',
       key: 'value5',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'select',
-        nodeId: record.id,
-        field: 'value5',
-        title: '值5',
-        options: selectOptions.value5,
-        editing: isEditing,
-        initialValue: record.value5,
-        updateDraftField,
-        linkedFields,
-      }),
+      render: (_text: string, record: TreeNode) => (
+        <RenderEditableField
+          editing={isEditing}
+          nodeId={record.id}
+          field="value5"
+          title="值5"
+          value={record.value5}
+          inputType="select"
+          options={selectOptions.value5}
+          updateDraftField={updateDraftField}
+          linkedFields={linkedFields}
+        />
+      ),
     },
     {
       title: '值6',
       dataIndex: 'value6',
       key: 'value6',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'input',
-        nodeId: record.id,
-        field: 'value6',
-        title: '值6',
-        editing: isEditing,
-        initialValue: record.value6,
-        updateDraftField,
-        linkedFields,
-      }),
+      render: (_text: string, record: TreeNode) => (
+        <RenderEditableField
+          editing={isEditing}
+          nodeId={record.id}
+          field="value6"
+          title="值6"
+          value={record.value6}
+          inputType="input"
+          updateDraftField={updateDraftField}
+          linkedFields={linkedFields}
+        />
+      ),
     },
     {
       title: '值7',
       dataIndex: 'value7',
       key: 'value7',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'input',
-        nodeId: record.id,
-        field: 'value7',
-        title: '值7',
-        editing: isEditing,
-        initialValue: record.value7,
-        updateDraftField,
-        linkedFields,
-      }),
+      render: (_text: string, record: TreeNode) => (
+        <RenderEditableField
+          editing={isEditing}
+          nodeId={record.id}
+          field="value7"
+          title="值7"
+          value={record.value7}
+          inputType="input"
+          updateDraftField={updateDraftField}
+          linkedFields={linkedFields}
+        />
+      ),
     },
     {
       title: '值8',
       dataIndex: 'value8',
       key: 'value8',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'input',
-        nodeId: record.id,
-        field: 'value8',
-        title: '值8',
-        editing: isEditing,
-        initialValue: record.value8,
-        updateDraftField,
-        linkedFields,
-      }),
+      render: (_text: string, record: TreeNode) => (
+        <RenderEditableField
+          editing={isEditing}
+          nodeId={record.id}
+          field="value8"
+          title="值8"
+          value={record.value8}
+          inputType="input"
+          updateDraftField={updateDraftField}
+          linkedFields={linkedFields}
+        />
+      ),
     },
     {
       title: '值9',
       dataIndex: 'value9',
       key: 'value9',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'input',
-        nodeId: record.id,
-        field: 'value9',
-        title: '值9',
-        editing: isEditing,
-        initialValue: record.value9,
-        updateDraftField,
-        linkedFields,
-      }),
+      render: (_text: string, record: TreeNode) => (
+        <RenderEditableField
+          editing={isEditing}
+          nodeId={record.id}
+          field="value9"
+          title="值9"
+          value={record.value9}
+          inputType="input"
+          updateDraftField={updateDraftField}
+          linkedFields={linkedFields}
+        />
+      ),
     },
     {
       title: '值10',
       dataIndex: 'value10',
       key: 'value10',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'input',
-        nodeId: record.id,
-        field: 'value10',
-        title: '值10',
-        editing: isEditing,
-        initialValue: record.value10,
-        updateDraftField,
-        linkedFields,
-      }),
+      render: (_text: string, record: TreeNode) => (
+        <RenderEditableField
+          editing={isEditing}
+          nodeId={record.id}
+          field="value10"
+          title="值10"
+          value={record.value10}
+          inputType="input"
+          updateDraftField={updateDraftField}
+          linkedFields={linkedFields}
+        />
+      ),
     },
   ];
-
-  const components = {
-    body: {
-      cell: EditableCell,
-    },
-  };
 
   return (
     <div style={{ padding: 24 ,width: '100%'}}>
@@ -698,7 +693,6 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
       </div>
 
       <Table
-        components={components}
         columns={columns}
         dataSource={treeData}
         rowKey="id"
