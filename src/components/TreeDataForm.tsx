@@ -84,11 +84,21 @@ const RenderEditableField = ({
 }: RenderEditableFieldProps) => {
   const [localValue, setLocalValue] = useState<string>(value);
   const [isVisible, setIsVisible] = useState(false); // 可视化懒加载状态
-  const [isLoading, setIsLoading] = useState(false); // 加载状态
+  const [error, setError] = useState<string>(''); // 错误信息
   const cellRef = useRef<HTMLDivElement>(null);
   
   // 判断是否为联动字段
   const isLinkedField = linkedFields?.includes(field) || false;
+  
+  // 验证函数
+  const validate = useCallback((val: string) => {
+    if (inputType === 'input' && !val.trim()) {
+      setError('该输入框不允许为空');
+      return false;
+    }
+    setError('');
+    return true;
+  }, [inputType]);
   
   // 监听联动字段变化事件
   const handleLinkedFieldChange = useCallback((event: FieldChangeEvent) => {
@@ -102,8 +112,6 @@ const RenderEditableField = ({
    useEffect(() => {
      if (!editing) return;
 
-     setIsLoading(true);
-
      const observer = new IntersectionObserver(
        (entries) => {
          entries.forEach((entry) => {
@@ -112,7 +120,8 @@ const RenderEditableField = ({
              setTimeout(() => {
                setIsVisible(true);
                setLocalValue(value);
-               setIsLoading(false);
+               // 进入编辑模式时验证初始值
+               validate(value);
              }, Math.random() * 500 + 100); // 100-600ms的随机延迟
            }
          });
@@ -130,7 +139,7 @@ const RenderEditableField = ({
      return () => {
        observer.disconnect();
      };
-   }, [editing, value]);
+   }, [editing, value, validate]);
 
   // 注册事件监听器 - 只给联动字段注册
   useEffect(() => {
@@ -143,11 +152,11 @@ const RenderEditableField = ({
     }
   }, [isVisible, isLinkedField, handleLinkedFieldChange]);
 
-   // 重置可视化状态
+   // 重置可视化状态和错误信息
    useEffect(() => {
      if (!editing) {
        setIsVisible(false);
-       setIsLoading(false);
+       setError('');
      }
    }, [editing]);
 
@@ -178,9 +187,11 @@ const RenderEditableField = ({
       <Input 
         value={localValue}
         placeholder={`请输入${title}`}
+        status={error ? 'error' : ''}
         onChange={(e) => {
           const value = e.target.value;
           setLocalValue(value);
+          validate(value);
           
           if (isLinkedField) {
             // 联动字段：触发事件
@@ -201,52 +212,89 @@ const RenderEditableField = ({
     if (inputType === 'select') {
       return (
         <div style={{
-          height: '32px',
-          border: '1px solid #d9d9d9',
-          borderRadius: '6px',
-          backgroundColor: '#ffffff',
-          display: 'flex',
-          alignItems: 'center',
-          padding: '4px 11px',
+          position: 'relative',
+          display: 'inline-flex',
+          width: '100%',
+          minHeight: '32px',
+          padding: '0',
           cursor: 'not-allowed',
-          opacity: 0.7,
           transition: 'all 0.3s ease'
         }}>
-          <span style={{ 
-            color: value ? '#000000d9' : '#bfbfbf', 
-            fontSize: '14px',
-            transition: 'color 0.3s ease'
-          }}>
-            {value || `请选择${title}`}
-          </span>
           <div style={{
-            marginLeft: 'auto',
-            width: '0',
-            height: '0',
-            borderLeft: '4px solid transparent',
-            borderRight: '4px solid transparent',
-            borderTop: '4px solid #bfbfbf',
-            transition: 'border-color 0.3s ease'
-          }} />
+            position: 'relative',
+            display: 'flex',
+            flex: 'auto',
+            alignItems: 'center',
+            minHeight: '32px',
+            padding: '0 11px',
+            border: '1px solid #d9d9d9',
+            borderRadius: '6px',
+            backgroundColor: '#ffffff',
+            transition: 'all 0.2s'
+          }}>
+            <div style={{
+              display: 'flex',
+              flex: 'auto',
+              alignItems: 'center',
+              overflow: 'hidden'
+            }}>
+              <span style={{ 
+                flex: 'auto',
+                overflow: 'hidden',
+                whiteSpace: 'nowrap',
+                textOverflow: 'ellipsis',
+                color: value ? 'rgba(0, 0, 0, 0.88)' : 'rgba(0, 0, 0, 0.25)', 
+                fontSize: '14px',
+                lineHeight: '1.5714285714285714',
+                transition: 'color 0.3s ease'
+              }}>
+                {value || `请选择${title}`}
+              </span>
+            </div>
+            <span style={{
+              display: 'flex',
+              flex: 'none',
+              alignItems: 'center',
+              marginLeft: '4px',
+              color: 'rgba(0, 0, 0, 0.25)',
+              fontSize: '12px',
+              pointerEvents: 'none'
+            }}>
+              <svg 
+                viewBox="64 64 896 896" 
+                focusable="false" 
+                width="1em" 
+                height="1em" 
+                fill="currentColor" 
+                aria-hidden="true"
+                style={{ display: 'inline-block' }}
+              >
+                <path d="M884 256h-75c-5.1 0-9.9 2.5-12.9 6.6L512 654.2 227.9 262.6c-3-4.1-7.8-6.6-12.9-6.6h-75c-6.5 0-10.3 7.4-6.5 12.7l352.6 486.1c12.8 17.6 39 17.6 51.7 0l352.6-486.1c3.9-5.3.1-12.7-6.4-12.7z"></path>
+              </svg>
+            </span>
+          </div>
         </div>
       );
     }
     return (
       <div style={{
-        height: '32px',
-        border: '1px solid #d9d9d9',
+        position: 'relative',
+        display: 'inline-flex',
+        width: '100%',
+        minHeight: '32px',
+        padding: '4px 11px',
+        border: `1px solid ${error ? '#ff4d4f' : '#d9d9d9'}`,
         borderRadius: '6px',
         backgroundColor: '#ffffff',
-        display: 'flex',
-        alignItems: 'center',
-        padding: '4px 11px',
         cursor: 'not-allowed',
-        opacity: 0.7,
-        transition: 'all 0.3s ease'
+        transition: 'all 0.2s'
       }}>
         <span style={{ 
-          color: value ? '#000000d9' : '#bfbfbf', 
+          display: 'inline-block',
+          width: '100%',
+          color: value ? 'rgba(0, 0, 0, 0.88)' : 'rgba(0, 0, 0, 0.25)', 
           fontSize: '14px',
+          lineHeight: '1.5714285714285714',
           transition: 'color 0.3s ease'
         }}>
           {value || `请输入${title}`}
@@ -256,19 +304,35 @@ const RenderEditableField = ({
   };
 
   if (!editing) {
-    return <span>{value}</span>;
+    return (
+      <div style={{
+        minHeight: '32px',
+        display: 'flex',
+        alignItems: 'center',
+        lineHeight: '32px'
+      }}>
+        <span>{value}</span>
+      </div>
+    );
   }
 
   return (
-    <div ref={cellRef} style={{ margin: 0 }}>
-      {isVisible ? (
-        getInputNode()
-      ) : (
-        <div style={{ 
-          opacity: isLoading ? 1 : 0.5,
-          transition: 'opacity 0.3s ease'
+    <div ref={cellRef}>
+      <div>
+        {isVisible ? (
+          getInputNode()
+        ) : (
+          getFakeInput()
+        )}
+      </div>
+      {error && (
+        <div style={{
+          color: '#ff4d4f',
+          fontSize: '12px',
+          lineHeight: '1.5',
+          marginTop: '4px'
         }}>
-          {getFakeInput()}
+          {error}
         </div>
       )}
     </div>
@@ -424,6 +488,40 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
   const handleSave = () => {
     // 从 ref 获取当前所有值
     const currentValues = formDataRef.current;
+    
+    // 验证所有输入框字段是否为空
+    let hasError = false;
+    const errorFields: string[] = [];
+    
+    const checkNodes = (nodes: TreeNode[]) => {
+      nodes.forEach((node) => {
+        const draftData = currentValues[node.id] || {};
+        // 检查所有输入框类型的字段（value6-value10）
+        ['name', 'value6', 'value7', 'value8', 'value9', 'value10'].forEach(field => {
+          // 优先使用草稿本中的值，如果草稿本中有该字段，即使是空字符串也使用它
+          const value = field in draftData 
+            ? (draftData[field as keyof TreeNode] as string)
+            : (node[field as keyof TreeNode] as string);
+          
+          if (typeof value === 'string' && !value.trim()) {
+            hasError = true;
+            errorFields.push(`${node.id}-${field}`);
+            console.log(`验证失败: 节点 ${node.id}, 字段 ${field}, 值: "${value}"`);
+          }
+        });
+        if (node.children) {
+          checkNodes(node.children);
+        }
+      });
+    };
+    
+    checkNodes(treeData);
+    
+    if (hasError) {
+      message.error('请填写所有必填项！存在空白输入框');
+      console.log('保存失败，检测到空白字段:', errorFields);
+      return;
+    }
     
     // 更新所有节点的数据
     const updateAllNodes = (nodes: TreeNode[]): TreeNode[] => {
