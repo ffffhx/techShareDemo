@@ -26,6 +26,10 @@ interface FormContextType {
   values: { [nodeId: string]: Partial<TreeNode> };
   updateValue: (nodeId: string, field: string, value: string) => void;
   getValue: (nodeId: string, field: string) => string;
+  errors: { [key: string]: string }; // key 格式: nodeId-field
+  setError: (nodeId: string, field: string, error: string) => void;
+  clearError: (nodeId: string, field: string) => void;
+  getError: (nodeId: string, field: string) => string;
 }
 
 // 创建 Context
@@ -63,8 +67,9 @@ const EditableCell = ({
     throw new Error('EditableCell must be used within FormProvider');
   }
 
-  const { updateValue, getValue } = context;
+  const { updateValue, getValue, setError, clearError, getError } = context;
   const currentValue = getValue(nodeId, field);
+  const errorMessage = getError(nodeId, field);
 
   // 懒加载：使用 Intersection Observer 检测可见性
   React.useEffect(() => {
@@ -106,8 +111,15 @@ const EditableCell = ({
           value={currentValue}
           options={options} 
           placeholder={`请选择${title}`}
+          status={errorMessage ? 'error' : undefined}
           onChange={(value) => {
             updateValue(nodeId, field, value);
+            // 校验空值
+            if (!value || value.trim() === '') {
+              setError(nodeId, field, '不允许为空');
+            } else {
+              clearError(nodeId, field);
+            }
             // 如果是值1字段，触发联动逻辑
             if (onValueChange && field === 'value1') {
               onValueChange(nodeId, value);
@@ -120,7 +132,17 @@ const EditableCell = ({
       <Input 
         value={currentValue}
         placeholder={`请输入${title}`}
-        onChange={(e) => updateValue(nodeId, field, e.target.value)}
+        status={errorMessage ? 'error' : undefined}
+        onChange={(e) => {
+          const value = e.target.value;
+          updateValue(nodeId, field, value);
+          // 校验空值
+          if (!value || value.trim() === '') {
+            setError(nodeId, field, '不允许为空');
+          } else {
+            clearError(nodeId, field);
+          }
+        }}
       />
     );
   };
@@ -131,7 +153,19 @@ const EditableCell = ({
       {editing ? (
         <div style={{ margin: 0 }}>
           {isVisible ? (
-            getInputNode()
+            <>
+              {getInputNode()}
+              {errorMessage && (
+                <div style={{ 
+                  color: '#ff4d4f', 
+                  fontSize: '12px', 
+                  marginTop: '4px',
+                  lineHeight: '1.5'
+                }}>
+                  {errorMessage}
+                </div>
+              )}
+            </>
           ) : (
             <div style={{ 
               height: '32px', 
@@ -169,6 +203,7 @@ const FormProvider = ({
   contextRef?: React.MutableRefObject<FormContextType | null>;
 }) => {
   const [values, setValues] = useState(initialValues);
+  const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
   const updateValue = useCallback((nodeId: string, field: string, value: string) => {
     setValues(prev => ({
@@ -190,7 +225,29 @@ const FormProvider = ({
     return typeof value === 'string' ? value : '';
   }, [values]);
 
-  const contextValue = { values, updateValue, getValue };
+  const setError = useCallback((nodeId: string, field: string, error: string) => {
+    const key = `${nodeId}-${field}`;
+    setErrors(prev => ({
+      ...prev,
+      [key]: error
+    }));
+  }, []);
+
+  const clearError = useCallback((nodeId: string, field: string) => {
+    const key = `${nodeId}-${field}`;
+    setErrors(prev => {
+      const newErrors = { ...prev };
+      delete newErrors[key];
+      return newErrors;
+    });
+  }, []);
+
+  const getError = useCallback((nodeId: string, field: string): string => {
+    const key = `${nodeId}-${field}`;
+    return errors[key] || '';
+  }, [errors]);
+
+  const contextValue = { values, updateValue, getValue, errors, setError, clearError, getError };
   
   // 将 context 值传递给 ref
   if (contextRef) {
@@ -317,7 +374,42 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
       return;
     }
     
-    const currentValues = contextRef.current.values;
+    const { values: currentValues, errors, setError } = contextRef.current;
+    
+    // 检查是否有现有错误
+    if (Object.keys(errors).length > 0) {
+      message.error('请先修正表单中的错误！');
+      return;
+    }
+    
+    // 检查所有字段是否为空
+    let hasEmptyField = false;
+    const checkEmptyFields = (nodes: TreeNode[]) => {
+      nodes.forEach((node) => {
+        const nodeValues = currentValues[node.id];
+        if (nodeValues) {
+          // 检查所有字段
+          const fields = ['name', 'value1', 'value2', 'value3', 'value4', 'value5', 'value6', 'value7', 'value8', 'value9', 'value10'];
+          fields.forEach((field) => {
+            const value = nodeValues[field as keyof TreeNode];
+            if (!value || (typeof value === 'string' && value.trim() === '')) {
+              setError(node.id, field, '不允许为空');
+              hasEmptyField = true;
+            }
+          });
+        }
+        if (node.children) {
+          checkEmptyFields(node.children);
+        }
+      });
+    };
+    
+    checkEmptyFields(treeData);
+    
+    if (hasEmptyField) {
+      message.error('存在空字段，请填写完整后再保存！');
+      return;
+    }
     
     // 更新所有节点的数据
     const updateAllNodes = (nodes: TreeNode[]): TreeNode[] => {
