@@ -1,4 +1,4 @@
-import React, { useState, useCallback, createContext, useContext, useRef } from 'react';
+import React, { useState, useCallback, createContext, useContext, useRef, useEffect } from 'react';
 import { Input, Button, Space, Typography, message, Table, Select } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { EditOutlined, SaveOutlined, CloseOutlined } from '@ant-design/icons';
@@ -308,6 +308,41 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
     const { getValue, updateValue, getError, setError, clearError, isEditing } = useFormContext();
     const currentValue = getValue(record.id, field);
     const errorMessage = getError(record.id, field);
+    const cellRef = useRef<HTMLDivElement>(null);
+    const [isVisible, setIsVisible] = useState(false);
+
+    // 懒加载：使用 Intersection Observer 检测可见性
+    useEffect(() => {
+      if (!isEditing) {
+        setIsVisible(false);
+        return;
+      }
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              // 模拟加载延迟，让用户看到加载效果
+              setTimeout(() => {
+                setIsVisible(true);
+              }, Math.random() * 500 + 100); // 100-600ms的随机延迟
+            }
+          });
+        },
+        {
+          rootMargin: '50px', // 提前50px开始渲染
+          threshold: 0.1
+        }
+      );
+
+      if (cellRef.current) {
+        observer.observe(cellRef.current);
+      }
+
+      return () => {
+        observer.disconnect();
+      };
+    }, [isEditing]);
 
     if (!isEditing) {
       const value = currentValue || record[field as keyof TreeNode];
@@ -327,46 +362,58 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
 
     if (inputType === 'select' && options) {
       return (
-        <div>
-          <Select
-            value={currentValue}
-            options={options}
-            placeholder={`请选择${field}`}
-            status={errorMessage ? 'error' : undefined}
-            onChange={handleChange}
-            style={{ width: '100%' }}
-          />
-          {errorMessage && (
-            <div style={{ 
-              color: '#ff4d4f', 
-              fontSize: '12px', 
-              marginTop: '4px',
-              lineHeight: '1.5'
-            }}>
-              {errorMessage}
-            </div>
+        <div ref={cellRef}>
+          {!isVisible ? (
+            <div style={{ height: '32px', background: '#f5f5f5', borderRadius: '4px' }} />
+          ) : (
+            <>
+              <Select
+                value={currentValue}
+                options={options}
+                placeholder={`请选择${field}`}
+                status={errorMessage ? 'error' : undefined}
+                onChange={handleChange}
+                style={{ width: '100%' }}
+              />
+              {errorMessage && (
+                <div style={{ 
+                  color: '#ff4d4f', 
+                  fontSize: '12px', 
+                  marginTop: '4px',
+                  lineHeight: '1.5'
+                }}>
+                  {errorMessage}
+                </div>
+              )}
+            </>
           )}
         </div>
       );
     }
 
     return (
-      <div>
-        <Input
-          value={currentValue}
-          placeholder={`请输入${field}`}
-          status={errorMessage ? 'error' : undefined}
-          onChange={(e) => handleChange(e.target.value)}
-        />
-        {errorMessage && (
-          <div style={{ 
-            color: '#ff4d4f', 
-            fontSize: '12px', 
-            marginTop: '4px',
-            lineHeight: '1.5'
-          }}>
-            {errorMessage}
-          </div>
+      <div ref={cellRef}>
+        {!isVisible ? (
+          <div style={{ height: '32px', background: '#f5f5f5', borderRadius: '4px' }} />
+        ) : (
+          <>
+            <Input
+              value={currentValue}
+              placeholder={`请输入${field}`}
+              status={errorMessage ? 'error' : undefined}
+              onChange={(e) => handleChange(e.target.value)}
+            />
+            {errorMessage && (
+              <div style={{ 
+                color: '#ff4d4f', 
+                fontSize: '12px', 
+                marginTop: '4px',
+                lineHeight: '1.5'
+              }}>
+                {errorMessage}
+              </div>
+            )}
+          </>
         )}
       </div>
     );
