@@ -1,4 +1,4 @@
-import React, { useState, createContext, useContext, useCallback, useRef } from 'react';
+import React, { useState, useCallback, createContext, useContext, useRef } from 'react';
 import { Input, Button, Space, Typography, message, Table, Select } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { EditOutlined, SaveOutlined, CloseOutlined } from '@ant-design/icons';
@@ -30,177 +30,39 @@ interface FormContextType {
   setError: (nodeId: string, field: string, error: string) => void;
   clearError: (nodeId: string, field: string) => void;
   getError: (nodeId: string, field: string) => string;
+  isEditing: boolean;
 }
 
 // 创建 Context
 const FormContext = createContext<FormContextType | null>(null);
 
-interface EditableCellProps {
-  editing: boolean;
-  nodeId: string;
-  field: string;
-  title: string;
-  children: React.ReactNode;
-  inputType?: 'input' | 'select';
-  options?: Array<{ label: string; value: string }>;
-  onValueChange?: (nodeId: string, value: string) => void;
-  [key: string]: unknown;
-}
-
-// 懒加载的表格单元格编辑组件
-const EditableCell = ({ 
-  editing, 
-  nodeId,
-  field,
-  title, 
-  children,
-  inputType = 'input',
-  options = [],
-  onValueChange,
-  ...restProps 
-}: EditableCellProps) => {
+// 自定义 Hook 来使用 Context
+const useFormContext = () => {
   const context = useContext(FormContext);
-  const [isVisible, setIsVisible] = useState(false);
-  const cellRef = useRef<HTMLTableCellElement>(null);
-  
   if (!context) {
-    throw new Error('EditableCell must be used within FormProvider');
+    throw new Error('useFormContext must be used within FormProvider');
   }
-
-  const { updateValue, getValue, setError, clearError, getError } = context;
-  const currentValue = getValue(nodeId, field);
-  const errorMessage = getError(nodeId, field);
-
-  // 懒加载：使用 Intersection Observer 检测可见性
-  React.useEffect(() => {
-    if (!editing) {
-      setIsVisible(false);
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            // 模拟加载延迟，让用户看到加载效果
-            setTimeout(() => {
-              setIsVisible(true);
-            }, Math.random() * 500 + 100); // 100-600ms的随机延迟
-          }
-        });
-      },
-      {
-        rootMargin: '50px', // 提前50px开始渲染
-        threshold: 0.1
-      }
-    );
-
-    if (cellRef.current) {
-      observer.observe(cellRef.current);
-    }
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [editing]);
-
-  const getInputNode = () => {
-    if (inputType === 'select') {
-      return (
-        <Select 
-          value={currentValue}
-          options={options} 
-          placeholder={`请选择${title}`}
-          status={errorMessage ? 'error' : undefined}
-          onChange={(value) => {
-            updateValue(nodeId, field, value);
-            // 校验空值
-            if (!value || value.trim() === '') {
-              setError(nodeId, field, '不允许为空');
-            } else {
-              clearError(nodeId, field);
-            }
-            // 如果是值1字段，触发联动逻辑
-            if (onValueChange && field === 'value1') {
-              onValueChange(nodeId, value);
-            }
-          }}
-        />
-      );
-    }
-    return (
-      <Input 
-        value={currentValue}
-        placeholder={`请输入${title}`}
-        status={errorMessage ? 'error' : undefined}
-        onChange={(e) => {
-          const value = e.target.value;
-          updateValue(nodeId, field, value);
-          // 校验空值
-          if (!value || value.trim() === '') {
-            setError(nodeId, field, '不允许为空');
-          } else {
-            clearError(nodeId, field);
-          }
-        }}
-      />
-    );
-  };
-
-
-  return (
-    <td ref={cellRef} {...restProps}>
-      {editing ? (
-        <div style={{ margin: 0 }}>
-          {isVisible ? (
-            <>
-              {getInputNode()}
-              {errorMessage && (
-                <div style={{ 
-                  color: '#ff4d4f', 
-                  fontSize: '12px', 
-                  marginTop: '4px',
-                  lineHeight: '1.5'
-                }}>
-                  {errorMessage}
-                </div>
-              )}
-            </>
-          ) : (
-            <div style={{ 
-              height: '32px', 
-              display: 'flex', 
-              alignItems: 'center',
-              color: '#999',
-              fontSize: '12px',
-              justifyContent: 'center'
-            }}>
-              加载中...
-            </div>
-          )}
-        </div>
-      ) : (
-        children
-      )}
-    </td>
-  );
+  return context;
 };
 
 interface TreeDataFormProps {
   data: TreeNode[];
 }
 
+
 // Form Provider 组件
 const FormProvider = ({ 
   children, 
   initialValues,
   onValueChange,
-  contextRef
+  contextRef,
+  isEditing
 }: { 
   children: React.ReactNode; 
   initialValues: { [nodeId: string]: Partial<TreeNode> };
   onValueChange?: (nodeId: string, field: string, value: string, updateValue: (nodeId: string, field: string, value: string) => void) => void;
   contextRef?: React.MutableRefObject<FormContextType | null>;
+  isEditing: boolean;
 }) => {
   const [values, setValues] = useState(initialValues);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
@@ -247,7 +109,16 @@ const FormProvider = ({
     return errors[key] || '';
   }, [errors]);
 
-  const contextValue = { values, updateValue, getValue, errors, setError, clearError, getError };
+  const contextValue = { 
+    values, 
+    updateValue, 
+    getValue, 
+    errors, 
+    setError, 
+    clearError, 
+    getError,
+    isEditing 
+  };
   
   // 将 context 值传递给 ref
   if (contextRef) {
@@ -315,11 +186,6 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
       '选项E1': '选项E2',
     };
     return linkMap[value1] || '选项A2';
-  };
-
-  // 处理值1变化时的联动逻辑（已废弃，联动逻辑在 handleContextValueChange 中处理）
-  const handleValue1Change = () => {
-    // 联动逻辑现在在 handleContextValueChange 中处理
   };
 
   // Context 值变化处理函数
@@ -432,6 +298,85 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
     // Context 会自动重置，因为重新渲染时会使用最新的 treeData
   };
 
+  // 渲染可编辑单元格组件
+  const EditableCell = ({ record, field, inputType = 'input', options }: {
+    record: TreeNode;
+    field: string;
+    inputType?: 'input' | 'select';
+    options?: Array<{ label: string; value: string }>;
+  }) => {
+    const { getValue, updateValue, getError, setError, clearError, isEditing } = useFormContext();
+    const currentValue = getValue(record.id, field);
+    const errorMessage = getError(record.id, field);
+
+    if (!isEditing) {
+      const value = currentValue || record[field as keyof TreeNode];
+      return typeof value === 'string' ? value : '';
+    }
+
+    const handleChange = (value: string) => {
+      updateValue(record.id, field, value);
+      
+      // 校验空值
+      if (!value || value.trim() === '') {
+        setError(record.id, field, '不允许为空');
+      } else {
+        clearError(record.id, field);
+      }
+    };
+
+    if (inputType === 'select' && options) {
+      return (
+        <div>
+          <Select
+            value={currentValue}
+            options={options}
+            placeholder={`请选择${field}`}
+            status={errorMessage ? 'error' : undefined}
+            onChange={handleChange}
+            style={{ width: '100%' }}
+          />
+          {errorMessage && (
+            <div style={{ 
+              color: '#ff4d4f', 
+              fontSize: '12px', 
+              marginTop: '4px',
+              lineHeight: '1.5'
+            }}>
+              {errorMessage}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        <Input
+          value={currentValue}
+          placeholder={`请输入${field}`}
+          status={errorMessage ? 'error' : undefined}
+          onChange={(e) => handleChange(e.target.value)}
+        />
+        {errorMessage && (
+          <div style={{ 
+            color: '#ff4d4f', 
+            fontSize: '12px', 
+            marginTop: '4px',
+            lineHeight: '1.5'
+          }}>
+            {errorMessage}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // 渲染可编辑单元格
+  const renderEditableCell = (record: TreeNode, field: string, inputType: 'input' | 'select' = 'input', options?: Array<{ label: string; value: string }>) => {
+    return <EditableCell record={record} field={field} inputType={inputType} options={options} />;
+  };
+
   // Table 列定义
   const columns: TableColumnsType<TreeNode> = [
     {
@@ -447,171 +392,82 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
       key: 'name',
       width: 150,
       fixed: 'left',
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'input',
-        nodeId: record.id,
-        field: 'name',
-        title: '名称',
-        editing: isEditing,
-      }),
+      render: (_, record: TreeNode) => renderEditableCell(record, 'name', 'input'),
     },
     {
       title: '值1',
       dataIndex: 'value1',
       key: 'value1',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'select',
-        nodeId: record.id,
-        field: 'value1',
-        title: '值1',
-        options: selectOptions.value1,
-        onValueChange: handleValue1Change,
-        editing: isEditing,
-      }),
+      render: (_, record: TreeNode) => renderEditableCell(record, 'value1', 'select', selectOptions.value1),
     },
     {
       title: '值2',
       dataIndex: 'value2',
       key: 'value2',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'select',
-        nodeId: record.id,
-        field: 'value2',
-        title: '值2',
-        options: selectOptions.value2,
-        editing: isEditing,
-      }),
+      render: (_, record: TreeNode) => renderEditableCell(record, 'value2', 'select', selectOptions.value2),
     },
     {
       title: '值3',
       dataIndex: 'value3',
       key: 'value3',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'select',
-        nodeId: record.id,
-        field: 'value3',
-        title: '值3',
-        options: selectOptions.value3,
-        editing: isEditing,
-      }),
+      render: (_, record: TreeNode) => renderEditableCell(record, 'value3', 'select', selectOptions.value3),
     },
     {
       title: '值4',
       dataIndex: 'value4',
       key: 'value4',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'select',
-        nodeId: record.id,
-        field: 'value4',
-        title: '值4',
-        options: selectOptions.value4,
-        editing: isEditing,
-      }),
+      render: (_, record: TreeNode) => renderEditableCell(record, 'value4', 'select', selectOptions.value4),
     },
     {
       title: '值5',
       dataIndex: 'value5',
       key: 'value5',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'select',
-        nodeId: record.id,
-        field: 'value5',
-        title: '值5',
-        options: selectOptions.value5,
-        editing: isEditing,
-      }),
+      render: (_, record: TreeNode) => renderEditableCell(record, 'value5', 'select', selectOptions.value5),
     },
     {
       title: '值6',
       dataIndex: 'value6',
       key: 'value6',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'input',
-        nodeId: record.id,
-        field: 'value6',
-        title: '值6',
-        editing: isEditing,
-      }),
+      render: (_, record: TreeNode) => renderEditableCell(record, 'value6', 'input'),
     },
     {
       title: '值7',
       dataIndex: 'value7',
       key: 'value7',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'input',
-        nodeId: record.id,
-        field: 'value7',
-        title: '值7',
-        editing: isEditing,
-      }),
+      render: (_, record: TreeNode) => renderEditableCell(record, 'value7', 'input'),
     },
     {
       title: '值8',
       dataIndex: 'value8',
       key: 'value8',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'input',
-        nodeId: record.id,
-        field: 'value8',
-        title: '值8',
-        editing: isEditing,
-      }),
+      render: (_, record: TreeNode) => renderEditableCell(record, 'value8', 'input'),
     },
     {
       title: '值9',
       dataIndex: 'value9',
       key: 'value9',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'input',
-        nodeId: record.id,
-        field: 'value9',
-        title: '值9',
-        editing: isEditing,
-      }),
+      render: (_, record: TreeNode) => renderEditableCell(record, 'value9', 'input'),
     },
     {
       title: '值10',
       dataIndex: 'value10',
       key: 'value10',
       width: 120,
-      onCell: (record: TreeNode) => ({
-        record,
-        inputType: 'input',
-        nodeId: record.id,
-        field: 'value10',
-        title: '值10',
-        editing: isEditing,
-      }),
+      render: (_, record: TreeNode) => renderEditableCell(record, 'value10', 'input'),
     },
   ];
 
-  const components = {
-    body: {
-      cell: EditableCell,
-    },
-  };
-
   return (
-    <div style={{ padding: 24 ,width: '100%'}}>
+    <div style={{ padding: 24, width: '100%' }}>
       <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <Typography.Title level={2} style={{ margin: 0 }}>树形数据表单</Typography.Title>
@@ -644,9 +500,9 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
         initialValues={buildInitialValues()}
         onValueChange={handleContextValueChange}
         contextRef={contextRef}
+        isEditing={isEditing}
       >
         <Table
-          components={components}
           columns={columns}
           dataSource={treeData}
           rowKey="id"
