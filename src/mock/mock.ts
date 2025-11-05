@@ -14,7 +14,7 @@ interface TreeNode {
   children?: TreeNode[]; // ✅ 这里加上 children
 }
 
-function generateTreeData(level = 1, maxLevel = 3, rowsPerLevel = 5): TreeNode[] {
+function generateTreeData(level = 1, maxLevel = 3, rowsPerLevel = 2): TreeNode[] {
   const result: TreeNode[] = [];
 
   for (let i = 0; i < rowsPerLevel; i++) {
