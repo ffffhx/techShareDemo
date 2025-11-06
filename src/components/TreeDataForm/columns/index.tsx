@@ -26,7 +26,11 @@ export const createColumns = ({
   const avatarColumn = createAvatarColumn();
   const actionColumn = createActionColumn({ isEditing, onDeleteRow, onViewLogs });
 
-  // 操作列和头像列始终显示
-  return [...baseColumns, statusColumn, actionColumn, avatarColumn];
+  // 操作列和头像列只在编辑态显示
+  if (isEditing) {
+    return [...baseColumns, statusColumn, actionColumn, avatarColumn];
+  }
+  
+  return [...baseColumns, statusColumn];
 };
 

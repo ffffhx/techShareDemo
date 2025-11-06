@@ -2,7 +2,7 @@
  * @Author: hxf hongxin.feng@transwarp.io
  * @Date: 2025-10-15 14:23:37
  * @LastEditors: hxf hongxin.feng@transwarp.io
- * @LastEditTime: 2025-11-05 23:19:21
+ * @LastEditTime: 2025-11-06 23:06:01
  * @FilePath: \my-app\src\components\TreeDataForm.tsx
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -81,6 +81,9 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
   const handleEdit = () => {
     console.time('⏱️ handleEdit 总耗时');
     
+    // 切换状态时清空已选中
+    setSelectedRowKeys([]);
+    
     // 记录所有节点的初始值
     console.time('📊 1. flattenTree - 扁平化树形数据');
     const flatData = flattenTree(treeData);
@@ -153,6 +156,9 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
 
       // 更新所有节点的数据
       setTreeData((prev) => updateAllNodes(prev, values));
+      
+      // 切换状态时清空已选中
+      setSelectedRowKeys([]);
       setIsEditing(false);
       message.success('保存成功！');
     } catch (error) {
@@ -164,6 +170,9 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
   const handleCancel = () => {
     // 重置表单
     form.resetFields();
+    
+    // 切换状态时清空已选中
+    setSelectedRowKeys([]);
     setIsEditing(false);
   };
 
