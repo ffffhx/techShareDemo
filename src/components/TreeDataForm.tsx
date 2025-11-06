@@ -214,7 +214,16 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
           dataSource={isEditing ? listData : treeData}
           rowKey="id"
           rowSelection={rowSelection}
-          pagination={false}
+          pagination={
+            isEditing
+              ? {
+                  pageSize: 25,
+                  showSizeChanger: true,
+                  showTotal: (total) => `共 ${total} 条`,
+                  pageSizeOptions: ['10', '25', '50', '100'],
+                }
+              : false
+          }
           scroll={{ x: 1500 }}
           bordered
           // 仅在树形查看态时展开所有行
