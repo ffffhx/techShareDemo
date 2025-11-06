@@ -1,4 +1,4 @@
-import { useState, createContext, useContext, useCallback, useRef } from 'react';
+import { useState, createContext, useContext, useCallback, useRef, useEffect } from 'react';
 import { Input, Button, Space, Typography, message, Table, Select } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { EditOutlined, SaveOutlined, CloseOutlined } from '@ant-design/icons';
@@ -23,9 +23,10 @@ interface TreeNode {
 
 // Context 类型定义
 interface FormContextType {
-  values: { [nodeId: string]: Partial<TreeNode> };
-  updateValue: (nodeId: string, field: string, value: string) => void;
+  valuesRef: React.MutableRefObject<{ [nodeId: string]: Partial<TreeNode> }>;
+  updateValue: (nodeId: string, field: string, value: string, isExternal?: boolean) => void;
   getValue: (nodeId: string, field: string) => string;
+  externalUpdateCounter: number;
 }
 
 // 创建 Context
@@ -61,31 +62,51 @@ const EditableCell = ({
     throw new Error('EditableCell must be used within FormProvider');
   }
 
-  const { updateValue, getValue } = context;
-  const currentValue = getValue(nodeId, field);
+  const { updateValue, getValue, externalUpdateCounter } = context;
+  
+  // 使用局部 state 管理输入值，避免每次输入都触发全局更新
+  const [localValue, setLocalValue] = useState(() => getValue(nodeId, field));
+
+  // 当编辑状态改变或 nodeId/field 改变时，同步 ref 中的值到局部 state
+  useEffect(() => {
+    setLocalValue(getValue(nodeId, field));
+  }, [editing, nodeId, field, getValue]);
+
+  // 当外部更新（比如联动逻辑）触发时，同步 ref 中的值到局部 state
+  useEffect(() => {
+    if (externalUpdateCounter > 0) {
+      setLocalValue(getValue(nodeId, field));
+    }
+  }, [externalUpdateCounter, nodeId, field, getValue]);
+
+  const handleChange = (value: string) => {
+    // 立即更新局部 state，保证输入流畅
+    setLocalValue(value);
+    // 同步更新到 ref 中
+    updateValue(nodeId, field, value);
+    
+    // 如果是值1字段，触发联动逻辑
+    if (onValueChange && field === 'value1') {
+      onValueChange(nodeId, value);
+    }
+  };
 
   const getInputNode = () => {
     if (inputType === 'select') {
       return (
         <Select 
-          value={currentValue}
+          value={localValue}
           options={options} 
           placeholder={`请选择${title}`}
-          onChange={(value) => {
-            updateValue(nodeId, field, value);
-            // 如果是值1字段，触发联动逻辑
-            if (onValueChange && field === 'value1') {
-              onValueChange(nodeId, value);
-            }
-          }}
+          onChange={handleChange}
         />
       );
     }
     return (
       <Input 
-        value={currentValue}
+        value={localValue}
         placeholder={`请输入${title}`}
-        onChange={(e) => updateValue(nodeId, field, e.target.value)}
+        onChange={(e) => handleChange(e.target.value)}
       />
     );
   };
@@ -116,19 +137,33 @@ const FormProvider = ({
 }: { 
   children: React.ReactNode; 
   initialValues: { [nodeId: string]: Partial<TreeNode> };
-  onValueChange?: (nodeId: string, field: string, value: string, updateValue: (nodeId: string, field: string, value: string) => void) => void;
+  onValueChange?: (nodeId: string, field: string, value: string, updateValue: (nodeId: string, field: string, value: string, isExternal?: boolean) => void) => void;
   contextRef?: React.MutableRefObject<FormContextType | null>;
 }) => {
-  const [values, setValues] = useState(initialValues);
+  // 使用 ref 存储 values，避免触发 Context 重新渲染
+  const valuesRef = useRef(initialValues);
+  // 外部更新计数器，用于触发联动逻辑更新
+  const [externalUpdateCounter, setExternalUpdateCounter] = useState(0);
 
-  const updateValue = useCallback((nodeId: string, field: string, value: string) => {
-    setValues(prev => ({
-      ...prev,
+  // 更新 ref 中的初始值（当 initialValues 改变时）
+  useEffect(() => {
+    valuesRef.current = initialValues;
+  }, [initialValues]);
+
+  const updateValue = useCallback((nodeId: string, field: string, value: string, isExternal = false) => {
+    // 直接更新 ref，不触发重新渲染
+    valuesRef.current = {
+      ...valuesRef.current,
       [nodeId]: {
-        ...prev[nodeId],
+        ...valuesRef.current[nodeId],
         [field]: value
       }
-    }));
+    };
+    
+    // 如果是外部更新（比如联动逻辑），触发计数器更新
+    if (isExternal) {
+      setExternalUpdateCounter(prev => prev + 1);
+    }
     
     // 调用外部联动逻辑，传入 updateValue 方法
     if (onValueChange) {
@@ -137,15 +172,21 @@ const FormProvider = ({
   }, [onValueChange]);
 
   const getValue = useCallback((nodeId: string, field: string): string => {
-    const value = values[nodeId]?.[field as keyof TreeNode];
+    const value = valuesRef.current[nodeId]?.[field as keyof TreeNode];
     return typeof value === 'string' ? value : '';
-  }, [values]);
+  }, []);
 
-  const contextValue = { values, updateValue, getValue };
+  // Context 值包含方法、ref 和外部更新计数器
+  const contextValue = { valuesRef, updateValue, getValue, externalUpdateCounter };
   
-  // 将 context 值传递给 ref
+  // 将 context 值传递给外部 ref
   if (contextRef) {
-    contextRef.current = contextValue;
+    contextRef.current = {
+      valuesRef,
+      updateValue,
+      getValue,
+      externalUpdateCounter
+    };
   }
 
   return (
@@ -217,13 +258,13 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
   };
 
   // Context 值变化处理函数
-  const handleContextValueChange = (nodeId: string, field: string, value: string, updateValue: (nodeId: string, field: string, value: string) => void) => {
+  const handleContextValueChange = (nodeId: string, field: string, value: string, updateValue: (nodeId: string, field: string, value: string, isExternal?: boolean) => void) => {
     // 如果是值1变化，自动更新值2
     if (field === 'value1') {
       const linkedValue2 = getLinkedValue2(value);
-      // 直接更新值2，避免循环调用
+      // 直接更新值2，标记为外部更新以触发 UI 更新
       setTimeout(() => {
-        updateValue(nodeId, 'value2', linkedValue2);
+        updateValue(nodeId, 'value2', linkedValue2, true);
       }, 0);
     }
   };
@@ -262,13 +303,13 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
   };
 
   const handleSave = () => {
-    // 从 Context 获取当前所有值
+    // 从 Context ref 获取当前所有值
     if (!contextRef.current) {
       message.error('表单数据获取失败！');
       return;
     }
     
-    const currentValues = contextRef.current.values;
+    const currentValues = contextRef.current.valuesRef.current;
     
     // 更新所有节点的数据
     const updateAllNodes = (nodes: TreeNode[]): TreeNode[] => {
