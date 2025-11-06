@@ -58,6 +58,21 @@ class EventEmitter {
 // 全局事件发射器
 const eventEmitter = new EventEmitter();
 
+// 联动配置：定义字段间的联动关系
+const LINKAGE_CONFIG = {
+  value1: {
+    affects: ['value2'],  // value1 变化会影响 value2
+  }
+  // 未来如果有其他联动，可以继续添加
+  // value3: { affects: ['value4'] }
+};
+
+// 自动计算需要监听事件的字段集合
+const FIELDS_NEED_LISTENER = new Set<string>();
+Object.values(LINKAGE_CONFIG).forEach(config => {
+  config.affects.forEach(field => FIELDS_NEED_LISTENER.add(field));
+});
+
 // 可编辑字段渲染组件 - 用于 render 函数
 interface RenderEditableFieldProps {
   editing: boolean;
@@ -67,8 +82,6 @@ interface RenderEditableFieldProps {
   value: string;
   inputType?: 'input' | 'select';
   options?: Array<{ label: string; value: string }>;
-  updateDraftField?: (nodeId: string, field: string, value: string) => void;
-  linkedFields?: string[];
 }
 
 const RenderEditableField = ({ 
@@ -79,16 +92,14 @@ const RenderEditableField = ({
   value,
   inputType = 'input',
   options = [],
-  updateDraftField,
-  linkedFields,
 }: RenderEditableFieldProps) => {
   const [localValue, setLocalValue] = useState<string>(value);
   const [isVisible, setIsVisible] = useState(false); // 可视化懒加载状态
   const [error, setError] = useState<string>(''); // 错误信息
   const cellRef = useRef<HTMLDivElement>(null);
   
-  // 判断是否为联动字段
-  const isLinkedField = linkedFields?.includes(field) || false;
+  // 判断当前字段是否需要监听事件（会被其他字段联动影响）
+  const needsListener = FIELDS_NEED_LISTENER.has(field);
   
   // 验证函数
   const validate = useCallback((val: string) => {
@@ -100,9 +111,9 @@ const RenderEditableField = ({
     return true;
   }, [inputType]);
   
-  // 监听联动字段变化事件
-  const handleLinkedFieldChange = useCallback((event: FieldChangeEvent) => {
-    console.log('handleLinkedFieldChange', event.value);
+  // 监听字段变化事件（只有被联动影响的字段才需要）
+  const handleFieldChange = useCallback((event: FieldChangeEvent) => {
+    // 只处理针对当前节点当前字段的更新
     if (event.nodeId === nodeId && event.field === field) {
       setLocalValue(event.value);
     }
@@ -141,16 +152,16 @@ const RenderEditableField = ({
      };
    }, [editing, value, validate]);
 
-  // 注册事件监听器 - 只给联动字段注册
+  // 注册事件监听器 - 只有会被联动影响的字段才监听
   useEffect(() => {
-    if (isVisible && isLinkedField) {
-      // 只有联动字段才需要监听事件
-      eventEmitter.on('linkChange', handleLinkedFieldChange);
+    if (isVisible && needsListener) {
+      // 只有会被其他字段联动影响的字段才需要监听事件
+      eventEmitter.on('fieldChange', handleFieldChange);
       return () => {
-        eventEmitter.off('linkChange', handleLinkedFieldChange);
+        eventEmitter.off('fieldChange', handleFieldChange);
       };
     }
-  }, [isVisible, isLinkedField, handleLinkedFieldChange]);
+  }, [isVisible, needsListener, handleFieldChange]);
 
    // 重置可视化状态和错误信息
    useEffect(() => {
@@ -169,16 +180,10 @@ const RenderEditableField = ({
           placeholder={`请选择${title}`}
           onChange={(value) => {
             setLocalValue(value);
-            
-            if (isLinkedField) {
-              // 联动字段：触发事件
-              eventEmitter.emit('linkChange', {
-                nodeId, field, value
-              });
-            } else {
-              // 普通字段：直接写入草稿本
-              updateDraftField?.(nodeId, field, value);
-            }
+            // 所有字段统一发送 fieldChange 事件
+            eventEmitter.emit('fieldChange', {
+              nodeId, field, value
+            });
           }}
         />
       );
@@ -192,16 +197,10 @@ const RenderEditableField = ({
           const value = e.target.value;
           setLocalValue(value);
           validate(value);
-          
-          if (isLinkedField) {
-            // 联动字段：触发事件
-            eventEmitter.emit('linkChange', {
-              nodeId, field, value
-            });
-          } else {
-            // 普通字段：直接写入草稿本
-            updateDraftField?.(nodeId, field, value);
-          }
+          // 所有字段统一发送 fieldChange 事件
+          eventEmitter.emit('fieldChange', {
+            nodeId, field, value
+          });
         }}
       />
     );
@@ -349,9 +348,6 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
   
   // 草稿本：存储所有字段的编辑数据
   const formDataRef = useRef<{ [nodeId: string]: Partial<TreeNode> }>({});
-  
-  // 联动字段列表：只有这些字段需要监听事件
-  const linkedFields = ['value1', 'value2'];
 
   // Mock 选择框选项
   const selectOptions = {
@@ -434,49 +430,45 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
     formDataRef.current = formData;
   }, [treeData]);
 
-  // 联动字段变化事件处理 - 只处理需要联动的字段
-  const handleLinkedFieldChange = useCallback((event: FieldChangeEvent) => {
+  // 统一的字段变化事件处理
+  const handleFieldChange = useCallback((event: FieldChangeEvent) => {
     const { nodeId, field, value } = event;
     
-    // 更新草稿本中的数据
+    // 1. 更新草稿本中的数据
     if (!formDataRef.current[nodeId]) {
       formDataRef.current[nodeId] = {};
     }
     (formDataRef.current[nodeId] as Record<string, string>)[field] = value;
     
-    // 联动逻辑：如果是值1变化，自动更新值2
-    if (field === 'value1') {
-      const linkedValue2 = getLinkedValue2(value);
-      
-      // 更新草稿本中的值2
-      formDataRef.current[nodeId].value2 = linkedValue2;
-      
-      // 通过事件通知值2的单元格更新显示
-      setTimeout(() => {
-        eventEmitter.emit('linkChange', {
-          nodeId,
-          field: 'value2',
-          value: linkedValue2
-        });
-      }, 0);
+    // 2. 检查联动逻辑：根据 LINKAGE_CONFIG 处理联动
+    const linkageConfig = LINKAGE_CONFIG[field as keyof typeof LINKAGE_CONFIG];
+    if (linkageConfig) {
+      // 如果是值1变化，自动更新值2
+      if (field === 'value1') {
+        const linkedValue2 = getLinkedValue2(value);
+        
+        // 更新草稿本中的值2
+        formDataRef.current[nodeId].value2 = linkedValue2;
+        
+        // 通过事件通知值2的单元格更新显示
+        setTimeout(() => {
+          eventEmitter.emit('fieldChange', {
+            nodeId,
+            field: 'value2',
+            value: linkedValue2
+          });
+        }, 0);
+      }
     }
   }, []);
 
-  // 普通字段变化处理 - 直接写入草稿本，不触发事件
-  const updateDraftField = useCallback((nodeId: string, field: string, value: string) => {
-    if (!formDataRef.current[nodeId]) {
-      formDataRef.current[nodeId] = {};
-    }
-    (formDataRef.current[nodeId] as Record<string, string>)[field] = value;
-  }, []);
-
-  // 注册联动字段事件监听器 - 只监听需要联动的字段
+  // 注册事件监听器 - 监听所有字段变化
   React.useEffect(() => {
-    eventEmitter.on('linkChange', handleLinkedFieldChange);
+    eventEmitter.on('fieldChange', handleFieldChange);
     return () => {
-      eventEmitter.off('linkChange', handleLinkedFieldChange);
+      eventEmitter.off('fieldChange', handleFieldChange);
     };
-  }, [handleLinkedFieldChange]);
+  }, [handleFieldChange]);
 
   const handleEdit = () => {
     // 初始化表单数据
@@ -568,8 +560,6 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
           title="名称"
           value={record.name}
           inputType="input"
-          updateDraftField={updateDraftField}
-          linkedFields={linkedFields}
         />
       ),
     },
@@ -587,8 +577,6 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
           value={record.value1}
           inputType="select"
           options={selectOptions.value1}
-          updateDraftField={updateDraftField}
-          linkedFields={linkedFields}
         />
       ),
     },
@@ -606,8 +594,6 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
           value={record.value2}
           inputType="select"
           options={selectOptions.value2}
-          updateDraftField={updateDraftField}
-          linkedFields={linkedFields}
         />
       ),
     },
@@ -625,8 +611,6 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
           value={record.value3}
           inputType="select"
           options={selectOptions.value3}
-          updateDraftField={updateDraftField}
-          linkedFields={linkedFields}
         />
       ),
     },
@@ -644,8 +628,6 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
           value={record.value4}
           inputType="select"
           options={selectOptions.value4}
-          updateDraftField={updateDraftField}
-          linkedFields={linkedFields}
         />
       ),
     },
@@ -663,8 +645,6 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
           value={record.value5}
           inputType="select"
           options={selectOptions.value5}
-          updateDraftField={updateDraftField}
-          linkedFields={linkedFields}
         />
       ),
     },
@@ -681,8 +661,6 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
           title="值6"
           value={record.value6}
           inputType="input"
-          updateDraftField={updateDraftField}
-          linkedFields={linkedFields}
         />
       ),
     },
@@ -699,8 +677,6 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
           title="值7"
           value={record.value7}
           inputType="input"
-          updateDraftField={updateDraftField}
-          linkedFields={linkedFields}
         />
       ),
     },
@@ -717,8 +693,6 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
           title="值8"
           value={record.value8}
           inputType="input"
-          updateDraftField={updateDraftField}
-          linkedFields={linkedFields}
         />
       ),
     },
@@ -735,8 +709,6 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
           title="值9"
           value={record.value9}
           inputType="input"
-          updateDraftField={updateDraftField}
-          linkedFields={linkedFields}
         />
       ),
     },
@@ -753,8 +725,6 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
           title="值10"
           value={record.value10}
           inputType="input"
-          updateDraftField={updateDraftField}
-          linkedFields={linkedFields}
         />
       ),
     },
