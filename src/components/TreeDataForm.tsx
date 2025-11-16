@@ -1,77 +1,17 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { Input, Button, Space, Typography, message, Table, Select } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { EditOutlined, SaveOutlined, CloseOutlined } from '@ant-design/icons';
+import {
+  useFormData,
+  useFieldLinkage,
+  useEditMode,
+  useEditableField,
+  useEventEmitter,
+  type TreeNode,
+} from '../hooks';
 
 const { Text } = Typography;
-
-interface TreeNode {
-  id: string;
-  name: string;
-  value1: string;
-  value2: string;
-  value3: string;
-  value4: string;
-  value5: string;
-  value6: string;
-  value7: string;
-  value8: string;
-  value9: string;
-  value10: string;
-  children?: TreeNode[];
-}
-
-// 事件类型定义
-type FieldChangeEvent = {
-  nodeId: string;
-  field: string;
-  value: string;
-};
-
-// 事件监听器类型
-type EventListener = (event: FieldChangeEvent) => void;
-
-// 简单的事件系统
-class EventEmitter {
-  private listeners: { [event: string]: EventListener[] } = {};
-
-  on(event: string, listener: EventListener) {
-    if (!this.listeners[event]) {
-      this.listeners[event] = [];
-    }
-    this.listeners[event].push(listener);
-  }
-
-  off(event: string, listener: EventListener) {
-    if (this.listeners[event]) {
-      this.listeners[event] = this.listeners[event].filter(l => l !== listener);
-    }
-  }
-
-  emit(event: string, data: FieldChangeEvent) {
-    if (this.listeners[event]) {
-      this.listeners[event].forEach(listener => listener(data));
-    }
-  }
-}
-
-// 全局事件发射器
-const eventEmitter = new EventEmitter();
-
-// 联动配置：定义字段间的联动关系
-const LINKAGE_CONFIG = {
-  value1: {
-    affects: ['value2'],  // value1 变化会影响 value2
-  }
-  // 未来如果有其他联动，可以继续添加
-  // value3: { affects: ['value4'] }
-};
-
-// 自动计算需要监听事件的字段集合
-const FIELDS_NEED_LISTENER = new Set<string>();
-Object.values(LINKAGE_CONFIG).forEach(config => {
-  config.affects.forEach(field => FIELDS_NEED_LISTENER.add(field));
-});
 
 // 可编辑字段渲染组件 - 用于 render 函数
 interface RenderEditableFieldProps {
@@ -93,83 +33,19 @@ const RenderEditableField = ({
   inputType = 'input',
   options = [],
 }: RenderEditableFieldProps) => {
-  const [localValue, setLocalValue] = useState<string>(value);
-  const [isVisible, setIsVisible] = useState(false); // 可视化懒加载状态
-  const [error, setError] = useState<string>(''); // 错误信息
-  const cellRef = useRef<HTMLDivElement>(null);
-  
-  // 判断当前字段是否需要监听事件（会被其他字段联动影响）
-  const needsListener = FIELDS_NEED_LISTENER.has(field);
-  
-  // 验证函数
-  const validate = useCallback((val: string) => {
-    if (inputType === 'input' && !val.trim()) {
-      setError('该输入框不允许为空');
-      return false;
-    }
-    setError('');
-    return true;
-  }, [inputType]);
-  
-  // 监听字段变化事件（只有被联动影响的字段才需要）
-  const handleFieldChange = useCallback((event: FieldChangeEvent) => {
-    // 只处理针对当前节点当前字段的更新
-    if (event.nodeId === nodeId && event.field === field) {
-      setLocalValue(event.value);
-    }
-  }, [nodeId, field]);
-
-   // 可视化懒加载：使用 Intersection Observer 检测可见性
-   useEffect(() => {
-     if (!editing) return;
-
-     const observer = new IntersectionObserver(
-       (entries) => {
-         entries.forEach((entry) => {
-           if (entry.isIntersecting) {
-             // 模拟加载延迟，让用户看到加载效果
-             setTimeout(() => {
-               setIsVisible(true);
-               setLocalValue(value);
-               // 进入编辑模式时验证初始值
-               validate(value);
-             }, Math.random() * 500 + 100); // 100-600ms的随机延迟
-           }
-         });
-       },
-       {
-         rootMargin: '50px', // 提前50px开始渲染
-         threshold: 0.1
-       }
-     );
-
-     if (cellRef.current) {
-       observer.observe(cellRef.current);
-     }
-
-     return () => {
-       observer.disconnect();
-     };
-   }, [editing, value, validate]);
-
-  // 注册事件监听器 - 只有会被联动影响的字段才监听
-  useEffect(() => {
-    if (isVisible && needsListener) {
-      // 只有会被其他字段联动影响的字段才需要监听事件
-      eventEmitter.on('fieldChange', handleFieldChange);
-      return () => {
-        eventEmitter.off('fieldChange', handleFieldChange);
-      };
-    }
-  }, [isVisible, needsListener, handleFieldChange]);
-
-   // 重置可视化状态和错误信息
-   useEffect(() => {
-     if (!editing) {
-       setIsVisible(false);
-       setError('');
-     }
-   }, [editing]);
+  const {
+    localValue,
+    error,
+    isVisible,
+    elementRef,
+    handleChange,
+  } = useEditableField({
+    nodeId,
+    field,
+    value,
+    editing,
+    inputType,
+  });
 
   const getInputNode = () => {
     if (inputType === 'select') {
@@ -178,13 +54,7 @@ const RenderEditableField = ({
           value={localValue}
           options={options} 
           placeholder={`请选择${title}`}
-          onChange={(value) => {
-            setLocalValue(value);
-            // 所有字段统一发送 fieldChange 事件
-            eventEmitter.emit('fieldChange', {
-              nodeId, field, value
-            });
-          }}
+          onChange={(value) => handleChange(value)}
         />
       );
     }
@@ -193,15 +63,7 @@ const RenderEditableField = ({
         value={localValue}
         placeholder={`请输入${title}`}
         status={error ? 'error' : ''}
-        onChange={(e) => {
-          const value = e.target.value;
-          setLocalValue(value);
-          validate(value);
-          // 所有字段统一发送 fieldChange 事件
-          eventEmitter.emit('fieldChange', {
-            nodeId, field, value
-          });
-        }}
+        onChange={(e) => handleChange(e.target.value)}
       />
     );
   };
@@ -316,7 +178,7 @@ const RenderEditableField = ({
   }
 
   return (
-    <div ref={cellRef}>
+    <div ref={elementRef}>
       <div>
         {isVisible ? (
           getInputNode()
@@ -343,11 +205,61 @@ interface TreeDataFormProps {
 }
 
 export const TreeDataForm = ({ data }: TreeDataFormProps) => {
-  const [treeData, setTreeData] = useState<TreeNode[]>(data);
-  const [isEditing, setIsEditing] = useState(false);
+  const [treeData, setTreeData] = React.useState<TreeNode[]>(data);
   
-  // 草稿本：存储所有字段的编辑数据
-  const formDataRef = useRef<{ [nodeId: string]: Partial<TreeNode> }>({});
+  // 使用表单数据管理 hook
+  const {
+    initializeFormData,
+    updateField,
+    validateForm,
+    applyFormData,
+  } = useFormData(treeData);
+
+  // 使用字段联动 hook
+  const { handleFieldChange } = useFieldLinkage(updateField);
+
+  // 使用编辑模式 hook
+  const {
+    isEditing,
+    enterEditMode,
+    save: saveEditMode,
+    cancel: cancelEditMode,
+  } = useEditMode(
+    () => initializeFormData(),
+    () => initializeFormData()
+  );
+
+  // 注册事件监听器 - 监听所有字段变化
+  const { on, off } = useEventEmitter();
+  useEffect(() => {
+    on('fieldChange', handleFieldChange);
+    return () => {
+      off('fieldChange', handleFieldChange);
+    };
+  }, [handleFieldChange, on, off]);
+
+  const handleEdit = () => {
+    enterEditMode();
+  };
+
+  const handleSave = () => {
+    // 验证表单
+    const { hasError, errorFields } = validateForm();
+    
+    if (hasError) {
+      message.error('请填写所有必填项！存在空白输入框');
+      console.log('保存失败，检测到空白字段:', errorFields);
+      return;
+    }
+    
+    // 应用表单数据
+    setTreeData(applyFormData(treeData));
+    saveEditMode();
+  };
+
+  const handleCancel = () => {
+    cancelEditMode();
+  };
 
   // Mock 选择框选项
   const selectOptions = {
@@ -386,155 +298,6 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
       { label: '选项D5', value: '选项D5' },
       { label: '选项E5', value: '选项E5' },
     ],
-  };
-
-  // 联动逻辑：根据值1的变化自动设置值2
-  const getLinkedValue2 = (value1: string): string => {
-    const linkMap: { [key: string]: string } = {
-      '选项A1': '选项A2',
-      '选项B1': '选项B2', 
-      '选项C1': '选项C2',
-      '选项D1': '选项D2',
-      '选项E1': '选项E2',
-    };
-    return linkMap[value1] || '选项A2';
-  };
-
-  // 初始化表单数据
-  const initializeFormData = useCallback(() => {
-    const formData: { [nodeId: string]: Partial<TreeNode> } = {};
-    
-    const buildFormData = (nodes: TreeNode[]) => {
-      nodes.forEach((node) => {
-        formData[node.id] = {
-          name: node.name,
-          value1: node.value1,
-          value2: node.value2,
-          value3: node.value3,
-          value4: node.value4,
-          value5: node.value5,
-          value6: node.value6,
-          value7: node.value7,
-          value8: node.value8,
-          value9: node.value9,
-          value10: node.value10,
-        };
-        
-        if (node.children) {
-          buildFormData(node.children);
-        }
-      });
-    };
-    
-    buildFormData(treeData);
-    formDataRef.current = formData;
-  }, [treeData]);
-
-  // 统一的字段变化事件处理
-  const handleFieldChange = useCallback((event: FieldChangeEvent) => {
-    const { nodeId, field, value } = event;
-    
-    // 1. 更新草稿本中的数据
-    if (!formDataRef.current[nodeId]) {
-      formDataRef.current[nodeId] = {};
-    }
-    (formDataRef.current[nodeId] as Record<string, string>)[field] = value;
-    
-    // 2. 检查联动逻辑：根据 LINKAGE_CONFIG 处理联动
-    const linkageConfig = LINKAGE_CONFIG[field as keyof typeof LINKAGE_CONFIG];
-    if (linkageConfig) {
-      // 如果是值1变化，自动更新值2
-      if (field === 'value1') {
-        const linkedValue2 = getLinkedValue2(value);
-        
-        // 更新草稿本中的值2
-        formDataRef.current[nodeId].value2 = linkedValue2;
-        
-        // 通过事件通知值2的单元格更新显示
-        setTimeout(() => {
-          eventEmitter.emit('fieldChange', {
-            nodeId,
-            field: 'value2',
-            value: linkedValue2
-          });
-        }, 0);
-      }
-    }
-  }, []);
-
-  // 注册事件监听器 - 监听所有字段变化
-  React.useEffect(() => {
-    eventEmitter.on('fieldChange', handleFieldChange);
-    return () => {
-      eventEmitter.off('fieldChange', handleFieldChange);
-    };
-  }, [handleFieldChange]);
-
-  const handleEdit = () => {
-    // 初始化表单数据
-    initializeFormData();
-    setIsEditing(true);
-    message.success('已进入编辑模式，所有单元格已变为可编辑状态');
-  };
-
-  const handleSave = () => {
-    // 从 ref 获取当前所有值
-    const currentValues = formDataRef.current;
-    
-    // 验证所有输入框字段是否为空
-    let hasError = false;
-    const errorFields: string[] = [];
-    
-    const checkNodes = (nodes: TreeNode[]) => {
-      nodes.forEach((node) => {
-        const draftData = currentValues[node.id] || {};
-        // 检查所有输入框类型的字段（value6-value10）
-        ['name', 'value6', 'value7', 'value8', 'value9', 'value10'].forEach(field => {
-          // 优先使用草稿本中的值，如果草稿本中有该字段，即使是空字符串也使用它
-          const value = field in draftData 
-            ? (draftData[field as keyof TreeNode] as string)
-            : (node[field as keyof TreeNode] as string);
-          
-          if (typeof value === 'string' && !value.trim()) {
-            hasError = true;
-            errorFields.push(`${node.id}-${field}`);
-            console.log(`验证失败: 节点 ${node.id}, 字段 ${field}, 值: "${value}"`);
-          }
-        });
-        if (node.children) {
-          checkNodes(node.children);
-        }
-      });
-    };
-    
-    checkNodes(treeData);
-    
-    if (hasError) {
-      message.error('请填写所有必填项！存在空白输入框');
-      console.log('保存失败，检测到空白字段:', errorFields);
-      return;
-    }
-    
-    // 更新所有节点的数据
-    const updateAllNodes = (nodes: TreeNode[]): TreeNode[] => {
-      return nodes.map((node) => {
-        const newNode = currentValues[node.id] ? { ...node, ...currentValues[node.id] } : node;
-        if (newNode.children) {
-          newNode.children = updateAllNodes(newNode.children);
-        }
-        return newNode;
-      });
-    };
-
-    setTreeData(updateAllNodes(treeData));
-    setIsEditing(false);
-    message.success('保存成功！');
-  };
-
-  const handleCancel = () => {
-    setIsEditing(false);
-    // 重置表单数据
-    initializeFormData();
   };
 
   // Table 列定义
@@ -772,4 +535,3 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
     </div>
   );
 };
-
