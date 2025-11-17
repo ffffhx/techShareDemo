@@ -10,12 +10,14 @@ import { useState } from 'react';
 import { Form, Button, Space, Typography, message, Table } from 'antd';
 import type { Key } from 'react';
 import type { TableProps } from 'antd';
+import type { FieldData } from 'rc-field-form/lib/interface';
 import { EditOutlined, SaveOutlined, CloseOutlined } from '@ant-design/icons';
 import type { TreeDataFormProps, TreeNode } from './TreeDataForm/types';
 import { useTreeData } from './TreeDataForm/hooks/useTreeData';
 import { useFormValues } from './TreeDataForm/hooks/useFormValues';
 import { useTableColumns } from './TreeDataForm/hooks/useTableColumns';
 import { useLogs } from './TreeDataForm/hooks/useLogs';
+import { useEditedFields } from './TreeDataForm/hooks/useEditedFields';
 import { removeNodeById, updateAllNodes } from './TreeDataForm/utils/treeUtils';
 import { LogViewer } from './TreeDataForm/components/LogViewer';
 import { flattenTree } from './TreeDataForm/utils/treeUtils';
@@ -36,6 +38,13 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
     logDelete,
     getNodeLogs,
   } = useLogs();
+
+  // 跟踪编辑过的字段
+  const {
+    markFieldAsEdited,
+    getEditedFieldPaths,
+    clearEditedFields,
+  } = useEditedFields();
 
   // 日志查看器状态
   const [logViewerOpen, setLogViewerOpen] = useState(false);
@@ -83,6 +92,9 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
     
     // 切换状态时清空已选中
     setSelectedRowKeys([]);
+    
+    // 清空已编辑字段记录
+    clearEditedFields();
     
     // 记录所有节点的初始值
     console.time('📊 1. flattenTree - 扁平化树形数据');
@@ -146,10 +158,27 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
 
   const handleSave = async () => {
     try {
-      // 验证表单
-      const values = await form.validateFields();
+      // 获取编辑过的字段路径
+      const editedFieldPaths = getEditedFieldPaths();
+      
+      // 如果没有编辑任何字段，直接返回
+      if (editedFieldPaths.length === 0) {
+        message.info('没有数据被修改');
+        setSelectedRowKeys([]);
+        setIsEditing(false);
+        return;
+      }
 
-      // 记录所有变更的日志
+      // 只验证编辑过的字段
+      // 将字段路径转换为 Ant Design Form 的字段名格式
+      const fieldNames = editedFieldPaths.map(([nodeId, fieldName]) => [nodeId, fieldName] as [string, string]);
+      
+      console.log(`只验证 ${editedFieldPaths.length} 个编辑过的字段`);
+      
+      // 验证编辑过的字段
+      const values = await form.validateFields(fieldNames);
+
+      // 记录所有变更的日志（只记录编辑过的节点）
       Object.keys(values).forEach((nodeId) => {
         logBatchChanges(nodeId, values[nodeId]);
       });
@@ -159,8 +188,9 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
       
       // 切换状态时清空已选中
       setSelectedRowKeys([]);
+      clearEditedFields();
       setIsEditing(false);
-      message.success('保存成功！');
+      message.success(`保存成功！共修改了 ${Object.keys(values).length} 个节点的数据`);
     } catch (error) {
       console.error('Validation failed:', error);
       message.error('表单验证失败，请检查输入！');
@@ -171,9 +201,28 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
     // 重置表单
     form.resetFields();
     
+    // 清空已编辑字段记录
+    clearEditedFields();
+    
     // 切换状态时清空已选中
     setSelectedRowKeys([]);
     setIsEditing(false);
+  };
+
+  // 处理表单字段变化，跟踪编辑过的字段
+  const handleFieldsChange = (
+    changedFields: FieldData[],
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _allFields: FieldData[]
+  ) => {
+    // 只跟踪实际发生变化的字段（changedFields），而不是所有字段
+    changedFields.forEach((field) => {
+      if (field.name && Array.isArray(field.name) && field.name.length === 2) {
+        const [nodeId, fieldName] = field.name as [string, string];
+        // 标记为已编辑
+        markFieldAsEdited(nodeId, fieldName);
+      }
+    });
   };
 
   // 表格行选择配置（多选）
@@ -217,7 +266,11 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
         </Space>
       </div>
 
-      <Form form={form} component={false}>
+      <Form 
+        form={form} 
+        component={false}
+        onFieldsChange={handleFieldsChange}
+      >
         <Table
           columns={columns}
           dataSource={isEditing ? listData : treeData}
