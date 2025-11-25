@@ -1,508 +1,199 @@
-import React, { useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Input, Button, Space, Typography, message, Table, Select } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { EditOutlined, SaveOutlined, CloseOutlined } from '@ant-design/icons';
-import {
-  useFormData,
-  useFieldLinkage,
-  useEditMode,
-  useEditableField,
-  useEventEmitter,
-  type TreeNode,
-} from '../hooks';
+import { useForm, useFieldArray, Controller } from 'react-hook-form';
 
 const { Text } = Typography;
 
-// 可编辑字段渲染组件 - 用于 render 函数
-interface RenderEditableFieldProps {
-  editing: boolean;
-  nodeId: string;
-  field: string;
-  title: string;
-  value: string;
-  inputType?: 'input' | 'select';
-  options?: Array<{ label: string; value: string }>;
+export interface TreeNode {
+  id: string;
+  name: string;
+  value1: string;
+  value2: string;
+  value3: string;
+  value4: string;
+  value5: string;
+  value6: string;
+  value7: string;
+  value8: string;
+  value9: string;
+  value10: string;
+  children?: TreeNode[];
 }
-
-const RenderEditableField = ({ 
-  editing, 
-  nodeId,
-  field,
-  title, 
-  value,
-  inputType = 'input',
-  options = [],
-}: RenderEditableFieldProps) => {
-  const {
-    localValue,
-    error,
-    isVisible,
-    elementRef,
-    handleChange,
-  } = useEditableField({
-    nodeId,
-    field,
-    value,
-    editing,
-    inputType,
-  });
-
-  const getInputNode = () => {
-    if (inputType === 'select') {
-      return (
-        <Select 
-          value={localValue}
-          options={options} 
-          placeholder={`请选择${title}`}
-          onChange={(value) => handleChange(value)}
-        />
-      );
-    }
-    return (
-      <Input 
-        value={localValue}
-        placeholder={`请输入${title}`}
-        status={error ? 'error' : ''}
-        onChange={(e) => handleChange(e.target.value)}
-      />
-    );
-  };
-
-  // 渲染假的输入框占位符 - 模拟真实的 Ant Design 组件样式
-  const getFakeInput = () => {
-    if (inputType === 'select') {
-      return (
-        <div style={{
-          position: 'relative',
-          display: 'inline-flex',
-          width: '100%',
-          minHeight: '32px',
-          padding: '0',
-          cursor: 'not-allowed',
-          transition: 'all 0.3s ease'
-        }}>
-          <div style={{
-            position: 'relative',
-            display: 'flex',
-            flex: 'auto',
-            alignItems: 'center',
-            minHeight: '32px',
-            padding: '0 11px',
-            border: '1px solid #d9d9d9',
-            borderRadius: '6px',
-            backgroundColor: '#ffffff',
-            transition: 'all 0.2s'
-          }}>
-            <div style={{
-              display: 'flex',
-              flex: 'auto',
-              alignItems: 'center',
-              overflow: 'hidden'
-            }}>
-              <span style={{ 
-                flex: 'auto',
-                overflow: 'hidden',
-                whiteSpace: 'nowrap',
-                textOverflow: 'ellipsis',
-                color: value ? 'rgba(0, 0, 0, 0.88)' : 'rgba(0, 0, 0, 0.25)', 
-                fontSize: '14px',
-                lineHeight: '1.5714285714285714',
-                transition: 'color 0.3s ease'
-              }}>
-                {value || `请选择${title}`}
-              </span>
-            </div>
-            <span style={{
-              display: 'flex',
-              flex: 'none',
-              alignItems: 'center',
-              marginLeft: '4px',
-              color: 'rgba(0, 0, 0, 0.25)',
-              fontSize: '12px',
-              pointerEvents: 'none'
-            }}>
-              <svg 
-                viewBox="64 64 896 896" 
-                focusable="false" 
-                width="1em" 
-                height="1em" 
-                fill="currentColor" 
-                aria-hidden="true"
-                style={{ display: 'inline-block' }}
-              >
-                <path d="M884 256h-75c-5.1 0-9.9 2.5-12.9 6.6L512 654.2 227.9 262.6c-3-4.1-7.8-6.6-12.9-6.6h-75c-6.5 0-10.3 7.4-6.5 12.7l352.6 486.1c12.8 17.6 39 17.6 51.7 0l352.6-486.1c3.9-5.3.1-12.7-6.4-12.7z"></path>
-              </svg>
-            </span>
-          </div>
-        </div>
-      );
-    }
-    return (
-      <div style={{
-        position: 'relative',
-        display: 'inline-flex',
-        width: '100%',
-        minHeight: '32px',
-        padding: '4px 11px',
-        border: `1px solid ${error ? '#ff4d4f' : '#d9d9d9'}`,
-        borderRadius: '6px',
-        backgroundColor: '#ffffff',
-        cursor: 'not-allowed',
-        transition: 'all 0.2s'
-      }}>
-        <span style={{ 
-          display: 'inline-block',
-          width: '100%',
-          color: value ? 'rgba(0, 0, 0, 0.88)' : 'rgba(0, 0, 0, 0.25)', 
-          fontSize: '14px',
-          lineHeight: '1.5714285714285714',
-          transition: 'color 0.3s ease'
-        }}>
-          {value || `请输入${title}`}
-        </span>
-      </div>
-    );
-  };
-
-  if (!editing) {
-    return (
-      <div style={{
-        minHeight: '32px',
-        display: 'flex',
-        alignItems: 'center',
-        lineHeight: '32px'
-      }}>
-        <span>{value}</span>
-      </div>
-    );
-  }
-
-  return (
-    <div ref={elementRef}>
-      <div>
-        {isVisible ? (
-          getInputNode()
-        ) : (
-          getFakeInput()
-        )}
-      </div>
-      {error && (
-        <div style={{
-          color: '#ff4d4f',
-          fontSize: '12px',
-          lineHeight: '1.5',
-          marginTop: '4px'
-        }}>
-          {error}
-        </div>
-      )}
-    </div>
-  );
-};
 
 interface TreeDataFormProps {
   data: TreeNode[];
 }
 
-export const TreeDataForm = ({ data }: TreeDataFormProps) => {
-  const [treeData, setTreeData] = React.useState<TreeNode[]>(data);
-  
-  // 使用表单数据管理 hook
-  const {
-    initializeFormData,
-    updateField,
-    validateForm,
-    applyFormData,
-  } = useFormData(treeData);
-
-  // 使用字段联动 hook
-  const { handleFieldChange } = useFieldLinkage(updateField);
-
-  // 使用编辑模式 hook
-  const {
-    isEditing,
-    enterEditMode,
-    save: saveEditMode,
-    cancel: cancelEditMode,
-  } = useEditMode(
-    () => initializeFormData(),
-    () => initializeFormData()
-  );
-
-  // 注册事件监听器 - 监听所有字段变化
-  const { on, off } = useEventEmitter();
-  useEffect(() => {
-    on('fieldChange', handleFieldChange);
-    return () => {
-      off('fieldChange', handleFieldChange);
-    };
-  }, [handleFieldChange, on, off]);
-
-  const handleEdit = () => {
-    enterEditMode();
-  };
-
-  const handleSave = () => {
-    // 验证表单
-    const { hasError, errorFields } = validateForm();
-    
-    if (hasError) {
-      message.error('请填写所有必填项！存在空白输入框');
-      console.log('保存失败，检测到空白字段:', errorFields);
-      return;
+const flattenTree = (tree: TreeNode[]): TreeNode[] => {
+  let result: TreeNode[] = [];
+  for (const node of tree) {
+    const { children, ...rest } = node;
+    result.push(rest as TreeNode);
+    if (children) {
+      result = result.concat(flattenTree(children));
     }
-    
-    // 应用表单数据
-    setTreeData(applyFormData(treeData));
-    saveEditMode();
+  }
+  return result;
+};
+
+const unflattenTree = (flatData: TreeNode[], originalTree: TreeNode[]): TreeNode[] => {
+  const dataMap = new Map(flatData.map(item => [item.id, { ...item, children: [] }]));
+
+  const buildTree = (nodes: TreeNode[]): TreeNode[] => {
+    return nodes.map(node => {
+      const updatedNode = dataMap.get(node.id)!;
+      if (node.children) {
+        updatedNode.children = buildTree(node.children);
+      }
+      return updatedNode;
+    });
   };
+
+  return buildTree(originalTree);
+};
+
+export const TreeDataForm = ({ data }: TreeDataFormProps) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [treeData, setTreeData] = useState<TreeNode[]>(data);
+
+  const flatData = useMemo(() => flattenTree(data), [data]);
+
+  const { control, handleSubmit, reset } = useForm<{ nodes: TreeNode[] }>({
+    defaultValues: { nodes: flatData },
+  });
+
+  const { fields } = useFieldArray({ control, name: 'nodes' });
+
+  useEffect(() => {
+    setTreeData(data);
+    reset({ nodes: flattenTree(data) });
+  }, [data, reset]);
+
+  const handleEdit = () => setIsEditing(true);
 
   const handleCancel = () => {
-    cancelEditMode();
+    reset({ nodes: flatData });
+    setIsEditing(false);
   };
 
-  // Mock 选择框选项
+  const onSubmit = (formData: { nodes: TreeNode[] }) => {
+    const newTreeData = unflattenTree(formData.nodes, data);
+    setTreeData(newTreeData);
+    setIsEditing(false);
+    message.success('保存成功！');
+  };
+
+  const onError = () => {
+    message.error('请填写所有必填项！存在空白输入框');
+  };
+
   const selectOptions = {
-    value1: [
-      { label: '选项A1', value: '选项A1' },
-      { label: '选项B1', value: '选项B1' },
-      { label: '选项C1', value: '选项C1' },
-      { label: '选项D1', value: '选项D1' },
-      { label: '选项E1', value: '选项E1' },
-    ],
-    value2: [
-      { label: '选项A2', value: '选项A2' },
-      { label: '选项B2', value: '选项B2' },
-      { label: '选项C2', value: '选项C2' },
-      { label: '选项D2', value: '选项D2' },
-      { label: '选项E2', value: '选项E2' },
-    ],
-    value3: [
-      { label: '选项A3', value: '选项A3' },
-      { label: '选项B3', value: '选项B3' },
-      { label: '选项C3', value: '选项C3' },
-      { label: '选项D3', value: '选项D3' },
-      { label: '选项E3', value: '选项E3' },
-    ],
-    value4: [
-      { label: '选项A4', value: '选项A4' },
-      { label: '选项B4', value: '选项B4' },
-      { label: '选项C4', value: '选项C4' },
-      { label: '选项D4', value: '选项D4' },
-      { label: '选项E4', value: '选项E4' },
-    ],
-    value5: [
-      { label: '选项A5', value: '选项A5' },
-      { label: '选项B5', value: '选项B5' },
-      { label: '选项C5', value: '选项C5' },
-      { label: '选项D5', value: '选项D5' },
-      { label: '选项E5', value: '选项E5' },
-    ],
+    value1: [{ label: '选项A1', value: '选项A1' }, { label: '选项B1', value: '选项B1' }],
+    value2: [{ label: '选项A2', value: '选项A2' }, { label: '选项B2', value: '选项B2' }],
+    value3: [{ label: '选项A3', value: '选项A3' }, { label: '选项B3', value: '选项B3' }],
+    value4: [{ label: '选项A4', value: '选项A4' }, { label: '选项B4', value: '选项B4' }],
+    value5: [{ label: '选项A5', value: '选项A5' }, { label: '选项B5', value: '选项B5' }],
   };
 
-  // Table 列定义
   const columns: TableColumnsType<TreeNode> = [
-    {
-      title: 'ID',
-      dataIndex: 'id',
-      key: 'id',
-      width: 180,
-      fixed: 'left',
-    },
+    { title: 'ID', dataIndex: 'id', key: 'id', width: 180, fixed: 'left' },
     {
       title: '名称',
       dataIndex: 'name',
       key: 'name',
       width: 150,
       fixed: 'left',
-      render: (_text: string, record: TreeNode) => (
-        <RenderEditableField
-          editing={isEditing}
-          nodeId={record.id}
-          field="name"
-          title="名称"
-          value={record.name}
-          inputType="input"
+      render: (_: string, record: TreeNode, index: number) => isEditing ? (
+        <Controller
+          name={`nodes.${index}.name`}
+          control={control}
+          rules={{ required: '名称不能为空' }}
+          render={({ field, fieldState }) => (
+            <div>
+              <Input 
+                {...field} 
+                placeholder="请输入名称" 
+                status={fieldState.error ? 'error' : ''} 
+              />
+              {fieldState.error && (
+                <div style={{ color: '#ff4d4f', fontSize: '12px', lineHeight: '1.5', marginTop: '4px' }}>
+                  {fieldState.error.message}
+                </div>
+              )}
+            </div>
+          )}
         />
-      ),
+      ) : record.name,
     },
-    {
-      title: '值1',
-      dataIndex: 'value1',
-      key: 'value1',
+    ...Object.keys(selectOptions).map((key, i) => ({
+      title: `值${i + 1}`,
+      dataIndex: key,
+      key: key,
       width: 120,
-      render: (_text: string, record: TreeNode) => (
-        <RenderEditableField
-          editing={isEditing}
-          nodeId={record.id}
-          field="value1"
-          title="值1"
-          value={record.value1}
-          inputType="select"
-          options={selectOptions.value1}
+      render: (_: string, record: TreeNode, index: number) => isEditing ? (
+        <Controller
+          name={`nodes.${index}.${key}` as const}
+          control={control}
+          rules={{ required: `值${i + 1}不能为空` }}
+          render={({ field, fieldState }) => (
+            <div>
+              <Select 
+                {...field} 
+                options={selectOptions[key as keyof typeof selectOptions]} 
+                placeholder={`请选择值${i + 1}`} 
+                style={{ width: '100%' }} 
+                status={fieldState.error ? 'error' : ''}
+              />
+              {fieldState.error && (
+                <div style={{ color: '#ff4d4f', fontSize: '12px', lineHeight: '1.5', marginTop: '4px' }}>
+                  {fieldState.error.message}
+                </div>
+              )}
+            </div>
+          )}
         />
-      ),
-    },
-    {
-      title: '值2',
-      dataIndex: 'value2',
-      key: 'value2',
+      ) : record[key as keyof TreeNode],
+    })),
+    ...[6, 7, 8, 9, 10].map(i => ({
+      title: `值${i}`,
+      dataIndex: `value${i}`,
+      key: `value${i}`,
       width: 120,
-      render: (_text: string, record: TreeNode) => (
-        <RenderEditableField
-          editing={isEditing}
-          nodeId={record.id}
-          field="value2"
-          title="值2"
-          value={record.value2}
-          inputType="select"
-          options={selectOptions.value2}
+      render: (_: string, record: TreeNode, index: number) => isEditing ? (
+        <Controller
+          name={`nodes.${index}.value${i}` as const}
+          control={control}
+          rules={{ required: `值${i}不能为空` }}
+          render={({ field, fieldState }) => (
+            <div>
+              <Input 
+                {...field} 
+                placeholder={`请输入值${i}`} 
+                status={fieldState.error ? 'error' : ''} 
+              />
+              {fieldState.error && (
+                <div style={{ color: '#ff4d4f', fontSize: '12px', lineHeight: '1.5', marginTop: '4px' }}>
+                  {fieldState.error.message}
+                </div>
+              )}
+            </div>
+          )}
         />
-      ),
-    },
-    {
-      title: '值3',
-      dataIndex: 'value3',
-      key: 'value3',
-      width: 120,
-      render: (_text: string, record: TreeNode) => (
-        <RenderEditableField
-          editing={isEditing}
-          nodeId={record.id}
-          field="value3"
-          title="值3"
-          value={record.value3}
-          inputType="select"
-          options={selectOptions.value3}
-        />
-      ),
-    },
-    {
-      title: '值4',
-      dataIndex: 'value4',
-      key: 'value4',
-      width: 120,
-      render: (_text: string, record: TreeNode) => (
-        <RenderEditableField
-          editing={isEditing}
-          nodeId={record.id}
-          field="value4"
-          title="值4"
-          value={record.value4}
-          inputType="select"
-          options={selectOptions.value4}
-        />
-      ),
-    },
-    {
-      title: '值5',
-      dataIndex: 'value5',
-      key: 'value5',
-      width: 120,
-      render: (_text: string, record: TreeNode) => (
-        <RenderEditableField
-          editing={isEditing}
-          nodeId={record.id}
-          field="value5"
-          title="值5"
-          value={record.value5}
-          inputType="select"
-          options={selectOptions.value5}
-        />
-      ),
-    },
-    {
-      title: '值6',
-      dataIndex: 'value6',
-      key: 'value6',
-      width: 120,
-      render: (_text: string, record: TreeNode) => (
-        <RenderEditableField
-          editing={isEditing}
-          nodeId={record.id}
-          field="value6"
-          title="值6"
-          value={record.value6}
-          inputType="input"
-        />
-      ),
-    },
-    {
-      title: '值7',
-      dataIndex: 'value7',
-      key: 'value7',
-      width: 120,
-      render: (_text: string, record: TreeNode) => (
-        <RenderEditableField
-          editing={isEditing}
-          nodeId={record.id}
-          field="value7"
-          title="值7"
-          value={record.value7}
-          inputType="input"
-        />
-      ),
-    },
-    {
-      title: '值8',
-      dataIndex: 'value8',
-      key: 'value8',
-      width: 120,
-      render: (_text: string, record: TreeNode) => (
-        <RenderEditableField
-          editing={isEditing}
-          nodeId={record.id}
-          field="value8"
-          title="值8"
-          value={record.value8}
-          inputType="input"
-        />
-      ),
-    },
-    {
-      title: '值9',
-      dataIndex: 'value9',
-      key: 'value9',
-      width: 120,
-      render: (_text: string, record: TreeNode) => (
-        <RenderEditableField
-          editing={isEditing}
-          nodeId={record.id}
-          field="value9"
-          title="值9"
-          value={record.value9}
-          inputType="input"
-        />
-      ),
-    },
-    {
-      title: '值10',
-      dataIndex: 'value10',
-      key: 'value10',
-      width: 120,
-      render: (_text: string, record: TreeNode) => (
-        <RenderEditableField
-          editing={isEditing}
-          nodeId={record.id}
-          field="value10"
-          title="值10"
-          value={record.value10}
-          inputType="input"
-        />
-      ),
-    },
+      ) : record[`value${i}` as keyof TreeNode],
+    }))
   ];
 
   return (
-    <div style={{ padding: 24 ,width: '100%'}}>
+    <div style={{ padding: 24, width: '100%' }}>
       <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <Typography.Title level={2} style={{ margin: 0 }}>树形数据表单</Typography.Title>
           <Text type="secondary">
-            {isEditing 
-              ? '编辑模式：可以修改所有字段，点击"保存"保存所有修改' 
-              : '查看模式：使用表格展示数据，点击"编辑"进入编辑态'
-            }
+            {isEditing
+              ? '编辑模式：可以修改所有字段，点击"保存"保存所有修改'
+              : '查看模式：使用表格展示数据，点击"编辑"进入编辑态'}
           </Text>
         </div>
         <Space>
@@ -512,7 +203,7 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
             </Button>
           ) : (
             <>
-              <Button type="primary" size="large" icon={<SaveOutlined />} onClick={handleSave}>
+              <Button type="primary" size="large" icon={<SaveOutlined />} onClick={handleSubmit(onSubmit, onError)}>
                 保存
               </Button>
               <Button size="large" icon={<CloseOutlined />} onClick={handleCancel}>
@@ -525,7 +216,7 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
 
       <Table
         columns={columns}
-        dataSource={treeData}
+        dataSource={isEditing ? fields : treeData}
         rowKey="id"
         pagination={false}
         scroll={{ x: 1500 }}
