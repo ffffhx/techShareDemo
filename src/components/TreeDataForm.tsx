@@ -2,6 +2,7 @@ import { useState, createContext, useContext, useCallback, useRef, useEffect } f
 import { Input, Button, Space, Typography, message, Table, Select } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { EditOutlined, SaveOutlined, CloseOutlined } from '@ant-design/icons';
+import { measureFunctionExecution } from '../utils/performance';
 
 const { Text } = Typography;
 
@@ -66,6 +67,18 @@ const EditableCell = ({
   
   // 使用局部 state 管理输入值，避免每次输入都触发全局更新
   const [localValue, setLocalValue] = useState(() => getValue(nodeId, field));
+  const inputInpStartTime = useRef<number | null>(null);
+
+  // 当 localValue 更新导致重渲染后，计算输入 INP
+  useEffect(() => {
+    if (inputInpStartTime.current) {
+      requestAnimationFrame(() => {
+        const inpDuration = performance.now() - inputInpStartTime.current!;
+        console.log(`[Performance] Input INP for field '${field}' on node '${nodeId}' took: ${inpDuration.toFixed(2)}ms`);
+        inputInpStartTime.current = null; // 重置计时器
+      });
+    }
+  }, [localValue, field, nodeId]);
 
   // 当编辑状态改变或 nodeId/field 改变时，同步 ref 中的值到局部 state
   useEffect(() => {
@@ -80,6 +93,9 @@ const EditableCell = ({
   }, [externalUpdateCounter, nodeId, field, getValue]);
 
   const handleChange = (value: string) => {
+    // 记录交互开始时间
+    inputInpStartTime.current = performance.now();
+
     // 立即更新局部 state，保证输入流畅
     setLocalValue(value);
     // 同步更新到 ref 中
@@ -298,11 +314,24 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
     return formValues;
   };
 
-  const handleEdit = () => {
-    setIsEditing(true);
-  };
+  const interactionStartTime = useRef<number | null>(null);
 
-  const handleSave = () => {
+  const handleEdit = measureFunctionExecution('handleEdit', () => {
+    interactionStartTime.current = performance.now();
+    setIsEditing(true);
+  });
+
+  useEffect(() => {
+    if (isEditing && interactionStartTime.current) {
+      requestAnimationFrame(() => {
+        const inpDuration = performance.now() - interactionStartTime.current!;
+        console.log(`[Performance] 'Edit' Interaction to Next Paint (INP) took: ${inpDuration.toFixed(2)}ms`);
+        interactionStartTime.current = null; // Reset for next interaction
+      });
+    }
+  }, [isEditing]);
+
+  const handleSave = measureFunctionExecution('handleSave', () => {
     // 从 Context ref 获取当前所有值
     if (!contextRef.current) {
       message.error('表单数据获取失败！');
@@ -325,12 +354,12 @@ export const TreeDataForm = ({ data }: TreeDataFormProps) => {
     setTreeData(updateAllNodes(treeData));
     setIsEditing(false);
     message.success('保存成功！');
-  };
+  });
 
-  const handleCancel = () => {
+  const handleCancel = measureFunctionExecution('handleCancel', () => {
     setIsEditing(false);
     // Context 会自动重置，因为重新渲染时会使用最新的 treeData
-  };
+  });
 
   // Table 列定义
   const columns: TableColumnsType<TreeNode> = [
